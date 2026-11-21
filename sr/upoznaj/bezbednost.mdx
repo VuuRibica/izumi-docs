@@ -1,0 +1,60 @@
+---
+title: "Bezbednost i podaci"
+description: "Gde stoje podaci i ko im može pristupiti."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21.
+
+Ova stranica kaže gde stoje podaci, ko im može pristupiti, šta se beleži i šta se briše. Stranice koje to dokazuju su u odeljku Dalje. Stavke koje nisu viđene uživo nose oznaku (iz koda).
+
+## Gde stoje podaci
+
+- Na serveru na kom je Izumi instaliran. Dokumenti, delovi teksta, vektori za pretragu, log pristupa, ključevi i backupi ostaju tamo (iz koda). Izumi ih ne šalje nikome. Kopiju backupa i ključeva van servera pravi operator, kako preporučuje stranica [Backup i restore](/sr/instalacija/backup).
+- Izumi nema telemetriju, proveru ažuriranja ni poziv ka nekoj Akia usluzi (provereno testom izlaznog saobraćaja na izdanju 0.5.7, 2026-11-21, vidi Ograničenja).
+- Pretraga podrazumevano radi na modelu unutar iste instalacije. Kad povežete AI alat (ChatGPT, Claude, Slackbot), odlomci koje on dobije idu tom alatu, u granicama vaših prava. Ako operator podesi spoljni model za pretragu, tekst dokumenata ide i tom dobavljaču: kod OpenAI-ja, na primer, tekst dokumenata i svako pitanje za pretragu šalju se OpenAI-ju (iz koda).
+
+## Šta izlazi sa servera
+
+- Većina spoljnih poziva postoji samo kad ih podesite: prijava Google ili Microsoft nalogom, izvori Google Drive i SharePoint, sertifikaciono telo za HTTPS, spoljni model za pretragu i, za povezivanje AI alata preko OAuth-a, adrese `claude.ai` i `chatgpt.com`. Pri prvom startu server jednom preuzima model za pretragu sa interneta (iz koda).
+- Tačna lista hostova je na stranici [Rad bez interneta](/sr/instalacija/bez-interneta).
+
+## Ko može da pristupi
+
+- Pristup ide po firmi, domenu i ulozi, kao na stranici [Kako radi pristup](/sr/upoznaj/pristup).
+- Pravila se proveravaju u samoj bazi podataka (PostgreSQL row level security), ne samo u aplikaciji (iz koda).
+- AI alat ima samo vaša prava, a vezu opozivate na ekranu **Moji tokeni i profil**.
+- Operator servera, onaj ko upravlja instalacijom, radi komande na samom serveru: pravi firme i prvu pozivnicu, briše osobe i firme i vidi zapise koji ne pripadaju nijednoj firmi.
+
+## Šta se beleži
+
+- **Log pristupa** upisuje ko je šta pitao, šta je vraćeno i šta je odbijeno.
+- Naslov i tekst dokumenta poslatog push API-jem se ne upisuju (iz koda).
+
+## Čuvanje i brisanje
+
+- Zapise o pristupu firma čuva koliko podesi: od 30 do 3650 dana, podrazumevano 365.
+- Brisanje izvora briše sve dokumente koje je uvezao, bez povratka. Fajlovi u Drive-u i SharePoint-u ostaju.
+- Pojedinačan dokument se ne briše iz web strane: nestaje sa izvorom, sa izvora ili kroz push API.
+- Izumi ne briše dokumente po roku (iz koda).
+- Brisanje osobe (na primer na zahtev po GDPR-u) i brisanje cele firme radi operator servera, ne admin firme (iz koda). Brišu se nalog i podaci o pristupu. Ono što je ušlo u bazu znanja ostaje firmi, ime postaje „Bivši član”, a zapisi o pristupu ostaju do isteka roka.
+
+## Zaštita
+
+- Uz ugrađeni proksi: HTTPS sa sertifikatom Let's Encrypt, preusmeravanje sa HTTP-a i HSTS. Proveren je izgled produkcije, ne izdavanje sertifikata od nule.
+- Podaci za prijavu konektora (Drive, SharePoint) čuvaju se šifrovani ključem firme i ne prikazuju se ponovo (iz koda).
+- Svake noći se pravi šifrovana kopija cele baze. Za potpun oporavak trebaju dva ključa. Mesečnu proveru vraćanja radi operator, po stranici Backup i restore.
+
+## Rad bez interneta
+
+- Server može da radi bez interneta, ali bez Google i Microsoft adresa niko ne može da se prijavi u web aplikaciju i nema Drive ni SharePoint izvora. Ostaju lični tokeni za AI alate i komande operatora (iz vodiča i koda).
+
+## Ograničenja
+
+- Izumi šalje rezultate kao podatke, ne kao uputstva, a isečke sa veba označava kao nepouzdane. Da li ih AI alat tako i tretira zavisi od alata.
+- Ova stranica ponavlja samo ono što piše na stranicama tabova AI alati, Administracija i Instalacija. Ne tvrdi ništa preko toga.
+
+## Dalje
+
+- [Rad bez interneta](/sr/instalacija/bez-interneta), [TLS](/sr/instalacija/tls), [Backup i restore](/sr/instalacija/backup) i [Konektori](/sr/instalacija/konektori).
+- [Brisanje i čuvanje](/sr/admin/brisanje), [Log pristupa](/sr/admin/log-pristupa) i [Kompanije, domeni, uloge](/sr/admin/kompanije-domeni-uloge).
+- [Pregled AI alata](/sr/ai-alati/pregled) kaže šta AI alat sme da vidi.

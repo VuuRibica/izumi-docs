@@ -1,0 +1,61 @@
+---
+title: "Requirements"
+description: "What you need before you install."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21: install live on a throwaway stack (Docker Desktop, Mac, arm64), and the requirements and production (Docker, image versions, disk) from the code and by reading.
+
+This tab is for the person who installs Izumi on their company's server: Docker, network, TLS, sign-in and connectors. Commands are allowed. People who only work in Izumi do not need to read it.
+
+## What gets installed
+
+Izumi is one `docker compose` project. The application image is built on your server, there is no registry.
+
+| Service | What it does |
+|---|---|
+| `db` | PostgreSQL 18 with pgvector (`pgvector/pgvector:0.8.7-pg18-bookworm`). Holds all data. Access is enforced in the database (row level security). |
+| `migrate` | Applies the database migrations and exits. Runs before `app` and `worker`. |
+| `app` | REST API, the MCP address `/mcp` and the web app, on port 8080 inside the container. |
+| `worker` | Import (upload, Drive and SharePoint), proposal expiry, deletion of old access records, re-embedding when the model changes and cleanup of expired OAuth data. |
+| `embedder` | Text Embeddings Inference with the model `BAAI/bge-m3` (1024 dimensions). |
+| `backup` | Nightly encrypted backup. |
+| `caddy` | Optional (profile `proxy`): TLS in front of `app`. See [TLS](/en/install/tls). |
+
+- `app`, `worker` and `migrate` use the same image `team-brain:<version>`. The image tag is the version.
+- The image and the repository are still called `team-brain`, even though the product is called Izumi. Commands run through the script `./tb`.
+
+## Who runs the install
+
+- Akia runs the shared and the dedicated install (one instance for several companies, or one instance per client).
+- This tab describes an install run by the company itself, on its own server or in its own cloud. The package and the guide are the same in all three cases.
+
+## Hardware
+
+- Reference server: VPS with 4 vCPU and 8 GB RAM, Linux on `amd64`.
+- The embedder is the biggest process. `docker-compose.yml` keeps `--max-batch-tokens 512`: larger batches get killed for memory right at start on 8 GB.
+- The target is at most 3 GB for the embedder. On a Mac (arm64 image in Docker Desktop) the embedder reached 4.80 GB in an earlier trial, and in the 2026-11-21 test it held 3.6 GiB idle after start, so leave headroom and do not run other large services on the same server.
+- Disk: the `team-brain` image about 0.5 GB, the database image 0.7 GB, the embedder image about 0.5 GB, the bge-m3 model 2.2 GB in the model volume, and building the image needs about 2 GB more of cache. Plan at least 40 GB for a small install.
+- The database and backups grow with the number of text chunks. 14 daily and 6 monthly copies are kept. The pilot corpus (43 documents, 209 chunks) gives a 1.1 MB backup.
+- Izumi production runs on a server with 75 GB of disk, 26 GB of it used (checked by reading).
+
+## Prerequisites
+
+- Linux on `amd64` with Docker Engine and the Docker Compose plugin (`docker compose`, version 2).
+- The user who runs the install is in the `docker` group, so `docker` and `./tb` work without `sudo`. Only reading backup files needs root.
+- `openssl` (keys and passwords), `curl` (readiness checks) and `git`.
+- A DNS name for the server, for example `brain.example.com`, and open ports 80 and 443 (443 also for UDP) if you use TLS with the `proxy` profile.
+- Internet during the install: building the image downloads the Node image and npm packages, and the first embedder start downloads the model from `huggingface.co`. For a server without internet see [Running offline](/en/install/offline).
+
+## Limits
+
+- The reference measurement (embedder RAM and search p95) on a VPS with 8 GB has not been done yet.
+- The install is designed for `amd64` (not checked live on a Linux server). ARM (Apple Silicon) is for a trial on a computer, not for a server.
+- Most settings are in the `.env` file: see [Install](/en/install/install).
+
+## Troubleshooting
+
+| What you see | Likely cause |
+|---|---|
+| The embedder is killed at start | Memory: check that `--max-batch-tokens 512` is set and that the server has at least 8 GB. |
+| Building the image fails | No internet, or the disk is full (about 2 GB of cache is needed). |
+| `docker` asks for `sudo` | The user is not in the `docker` group. |

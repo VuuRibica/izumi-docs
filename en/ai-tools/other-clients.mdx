@@ -1,0 +1,45 @@
+---
+title: "Other clients"
+description: "The generic setup for any MCP client: an address and a header with a token."
+---
+
+Checked on Izumi 0.5.7, 2026-11-20 (the generic setup follows the server's documentation, no other client was tried live).
+
+Every client that speaks MCP over Streamable HTTP is set up the same way.
+
+## What you need
+
+- The server address: the address of your Izumi with `/mcp` at the end. On the demo installation (invitation only): `https://izumi.akiaconsulting.com/mcp`.
+- A personal token. Make it in Izumi: **My tokens and profile**, section **Tokens**, button **New token**. The steps are on the [Claude Code](/en/ai-tools/claude-code) page, section "Path 2: personal token".
+
+The token acts as you. It never reads more than you can read, and a narrowed token reads less.
+
+## Setup
+
+In the client add a remote MCP server with these values:
+
+| Setting | Value |
+|---|---|
+| URL | `https://izumi.akiaconsulting.com/mcp` (your address with `/mcp`) |
+| Transport | Streamable HTTP |
+| Header | `Authorization: Bearer <token>` |
+
+- Every request carries the header `Authorization: Bearer <token>`.
+- Streamable HTTP only. A client that supports only local (stdio) servers does not work. SSE is not used.
+- Optional: the client may send the headers `X-TB-Client` (the client's name) and `X-TB-Agent` (the name of the agent running in it). Editors who review your proposals see them, and they show in your **Access log**, so an editor knows where a proposal came from.
+
+## Check
+
+Ask the client to call `whoami`. The answer is your name and the companies and domains the token may read. If you get an authentication error, the token is wrong, expired or revoked: make a new one.
+
+## Limits
+
+- The token expires at the expiry you chose, at most 90 days.
+- Calls are limited to 60 per minute per token. The tool then returns `rate_limited` with the wait time.
+- Revoking the token on **My tokens and profile** stops the client at once.
+
+## Troubleshooting
+
+- An authentication error: the token is wrong, expired or revoked. Make a new one.
+- `forbidden_scope`: the token lacks the `propose` scope. Make a new token with that scope.
+- `rate_limited`: wait for the time the tool names.

@@ -1,0 +1,73 @@
+---
+title: "First sign-in and admin"
+description: "Create the first administrator."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21: the server commands live on the throwaway stack from the [Install](/en/install/install) page (a new Docker stack on a Mac, arm64, Docker Desktop), and the app page after sign-in live on production.
+
+People sign in with a Google or Microsoft account, there are no passwords. The first time an invitation is needed. A new install has nobody who can invite yet, so the operator creates the company and the first invitation with a command on the server.
+
+## Create the company and the first invitation
+
+The commands run in one temporary container of the image. They need no Node, no npm and no internet on the server. They read `DATABASE_URL_OWNER` and `TB_PUBLIC_URL` from `.env`.
+
+<Steps>
+  <Step title="Create the company">
+    The slug is a short name without spaces, and `--name` is the name people see. You can create the person right away, but it is not required: the invitation is enough.
+
+    ```
+    ./tb admin company create acme --name "Acme d.o.o."
+    ./tb admin person create --name "Ana Anić" --email ana@acme.example
+    ```
+
+    The `person create` command also has `--locale` (`sr-Latn` or `en`, default `sr-Latn`), the display language.
+  </Step>
+  <Step title="Create the invitation">
+    ```
+    ./tb admin invitation create acme ana@acme.example --admin
+    ```
+
+    The command prints the link `<TB_PUBLIC_URL>/invite/<secret>` only once (`--json` prints it as JSON). Only the hash is stored in the database, so a lost link cannot be shown again: run the command again and you get a new one, and the previous invitation is voided. The link is valid for 72 hours and can be used once. `--admin` gives the person the company admin role, without it the person is an ordinary member. The access record gets `invite.create`.
+  </Step>
+  <Step title="Open the link and sign in">
+    Open the link in a browser and sign in with the invited account. You end up on the **My tokens and profile** page, as a company admin. A sign-in provider must be set up, see [Sign-in](/en/install/sign-in).
+  </Step>
+  <Step title="Invite everyone else from the app">
+    You invite everyone else on the **Companies and members** page, with the **Invite a member** button. The dialog is described in [People and invitations](/en/admin/people): you no longer need a command on the server.
+  </Step>
+</Steps>
+
+## Operator folder upload
+
+This is for when you want to queue a folder of Markdown or text files for import, without the web page. You need three things: a domain, an upload source whose rules map the folder to that domain, and a temporary container that sees the folder.
+
+```
+./tb admin domain create acme general --sr opste --en general
+cat > rules.json <<'EOF'
+{ "include": [ { "folderId": "files", "path": "files", "domain": "general", "recursive": true } ], "types": ["md", "txt"] }
+EOF
+docker compose run --rm -v "$PWD/rules.json:/rules.json:ro" migrate node dist/cli.js admin source create acme --kind upload --name operator --rules /rules.json
+docker compose run --rm -v "$PWD/files:/files:ro" migrate node dist/cli.js ingest upload /files --company acme --source operator
+```
+
+- The path of every file starts with the name of the folder you mount (`/files` gives `files/...`), and the rules target that path: `folderId` and `path` are therefore `files`.
+- `ingest upload` and `ingest remove` find the source by name, so every source of a company must have its own name. With two sources of the same name the commands stop with the error `company acme has 2 sources named operator`.
+- A source without rules (or with rules for a domain that does not exist) excludes every file: the upload prints `excluded:` and `queued 0 file(s)`.
+- The `worker` service indexes the queued files, no extra command is needed. Follow `docker compose logs worker`.
+
+Other operator commands: `./tb admin --help`. Operator actions are written to the access record as `system`.
+
+## Limits
+
+- Companies are created only with the operator command, not from the app.
+- The invitation is valid for 72 hours and once. The link cannot be shown again.
+- This page covers only the first admin and the operator upload. People, roles and sources in the app are in the Administration tab.
+
+## Troubleshooting
+
+| What you see | What to check |
+|---|---|
+| The invitation link does not work | It expired (72 hours), was already used, or was replaced by a new invitation. Create a new one. |
+| Sign-in fails with the invited address | Google trusts only addresses it has verified itself. With Microsoft, without the optional `email` claim Izumi compares `preferred_username`, which can differ from the invited address (see [Sign-in](/en/install/sign-in)). |
+| The sign-in page says _"Sign-in is not set up yet. Ask the operator of this installation."_ | No provider is set up (`TB_OIDC_*`), see [Sign-in](/en/install/sign-in). |
+| The upload prints `queued 0 file(s)` | The source rules do not match the file paths, or the domain does not exist. |

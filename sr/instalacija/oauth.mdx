@@ -1,0 +1,101 @@
+---
+title: "OAuth za MCP klijente"
+description: "Uključite OAuth da se AI alati povežu samo adresom."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21 (kod i produkcija, samo čitanje).
+
+Sa uključenim OAuth-om ChatGPT, claude.ai i Claude Code povezuju se na `<TB_PUBLIC_URL>/mcp` bez ličnog tokena. Osoba se prijavi u Izumi u pregledaču, odobri klijenta na Izumi stranici pristanka i klijent dobija OAuth token koji radi kao ta osoba. Opseg je `read` i, kad osoba to štiklira, `propose`. Izumi je sam svoj server za autorizaciju. Koraci za svaki klijent su u kartici AI alati: [Pregled](/sr/ai-alati/pregled).
+
+## Šta vam treba
+
+- Javna HTTPS adresa. `TB_OAUTH=on` traži `TB_PUBLIC_URL` sa `https` i bez putanje (na primer `https://brain.example.com`) i `TB_MASTER_KEY` (ključevi servera za potpisivanje i kolačiće čuvaju se šifrovani njime).
+- ChatGPT i claude.ai pozivaju server iz svojih oblaka, pa adresa mora biti dostupna sa interneta. Claude Code u istoj mreži kao server traži samo tu mrežu.
+- `http` adresa je dozvoljena samo za `localhost` i `127.0.0.1` (testovi).
+
+## Tri prekidača
+
+Postavite ih u `.env`, pa `docker compose up -d`.
+
+| Promenljiva | Podrazumevano | Šta radi |
+|---|---|---|
+| `TB_OAUTH` | `off` | `on` montira server za autorizaciju (`/oauth/*` i dokumente za otkrivanje) u aplikaciju. |
+| `TB_OAUTH_CIMD` | `on` | Čita se samo uz `TB_OAUTH=on`. Klijent čiji je `client_id` adresa na `claude.ai` ili `chatgpt.com` prepoznaje se po dokumentu sa metapodacima na toj adresi (CIMD). `off` za zatvoren izlaz. |
+| `TB_OAUTH_DCR` | `on` | Čita se samo uz `TB_OAUTH=on`. Dinamička registracija klijenata na `/oauth/register`: klijent bez CIMD dokumenta, ili bilo koji klijent kad je CIMD isključen, registruje se sam. Stranica pristanka takvog klijenta označava kao neproverenog. |
+
+## Šta server poziva i kada (iz koda)
+
+- Samo uz `TB_OAUTH=on` i `TB_OAUTH_CIMD` uključen, i samo kad klijent čiji je `client_id` adresa na `claude.ai` ili `chatgpt.com` započne povezivanje, server preuzima dokument sa metapodacima tog klijenta i JWKS koji dokument navodi.
+- Nijedan drugi host se nikad ne poziva: dva hosta su fiksirana u kodu.
+- Poziv je samo `https`, ne prati preusmeravanja, ne ide na privatne adrese, staje posle 5 sekundi, uzima najviše 5 KB za dokument i 64 KB za JWKS, a odgovor se čuva sat vremena.
+- Kad poziv ne uspe (na primer u zatvorenoj mreži), povezivanje se odbija (`invalid_client`). Ništa drugo nije pogođeno.
+- Uz `TB_OAUTH_CIMD=off` server ne zove nikoga: claude.ai i Claude Code se tada povezuju preko DCR-a (kad je uključen) ili preko unapred registrovanog klijenta.
+- Uz `TB_OAUTH=off` OAuth ne postoji.
+
+## Proverite da radi
+
+Produkcija ima OAuth uključen. Ove adrese su javne i ne traže prijavu:
+
+```
+curl -s https://brain.example.com/.well-known/oauth-authorization-server
+curl -s https://brain.example.com/.well-known/oauth-protected-resource
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://brain.example.com/mcp
+```
+
+- Prvi odgovor ima `issuer` sa vašom `https` adresom, `authorization_endpoint`, `registration_endpoint`, `code_challenge_methods_supported` sa `S256` i `grant_types_supported` sa `authorization_code` i `refresh_token`.
+- Drugi ima `resource` jednak `<TB_PUBLIC_URL>/mcp` i opsege `read` i `propose`.
+- `POST /mcp` bez tokena vraća 401.
+
+## Isključivanje
+
+Postavite `TB_OAUTH=off` i pokrenite `docker compose up -d`. Rute `/oauth` i dokumenti za otkrivanje nestaju, a `/mcp` prima samo lične tokene: povezane aplikacije odmah prestaju da rade. Njihovi redovi ostaju na strani **Moji tokeni i profil**: opozovite ih tamo ako prekidač ostaje isključen. Da zadržite OAuth, ali prekinete svaki spoljni poziv, postavite `TB_OAUTH_CIMD=off`.
+
+## Rotacija ključeva
+
+```
+./tb admin oauth rotate-keys
+docker compose restart app
+```
+
+Komanda dodaje novi ključ za potpisivanje i novi ključ za kolačiće. Stari ključ za kolačiće važi još 24 sata, a stari ključ za potpisivanje ostaje u JWKS još 7 dana, pa niko nije odjavljen.
+
+Posle promene `TB_MASTER_KEY` stari ključevi ne mogu da se pročitaju. Tada:
+
+```
+./tb admin oauth rotate-keys --reset
+docker compose restart app
+```
+
+`--reset` odmah povlači sve stare ključeve (pristanci u toku kreću ispočetka).
+
+## Unapred registrovani klijenti
+
+Za klijenta koji ne podržava ni CIMD ni DCR, ili kad su oba isključena, registrujte javnog klijenta (PKCE, bez secreta) i dajte njegov `client_id` klijentu.
+
+```
+./tb admin oauth client add --label "Team tool" --redirect-uri https://tool.example.com/callback
+./tb admin oauth client list
+./tb admin oauth client remove <client_id>
+```
+
+- `--label` je ime koje stranica pristanka prikazuje (najviše 60 znakova).
+- `--redirect-uri` prima `https`, ili `http` na `localhost`, `127.0.0.1` ili `[::1]`. Ponovite ga za više adresa.
+- `client list` navodi i klijente koji su se sami registrovali preko DCR-a.
+
+## Ograničenja
+
+- Zajednički ključ za celu firmu nije podržan: svaka osoba povezuje svog klijenta i odobrava ga sopstvenom prijavom, a veza čita samo ono što ta osoba čita.
+- (Iz vodiča za instalaciju, nije provereno uživo.) ChatGPT Free, Plus i Pro samo čitaju (`whoami`, `search`, `get_document`, `who_knows`). `propose_note` iz ChatGPT-a traži Business ili Enterprise radni prostor.
+- Odobravanje klijenata za celu kompaniju preko administratora provajdera identiteta (Enterprise-Managed Authorization) stiže kasnije.
+- Sama Entra prijava je proverena uživo na Izumiju 0.5.8 (2026-11-21, vidi [Prijava](/sr/instalacija/prijava)). Povezivanje preko OAuth-a kao osoba koja se prijavila Microsoftom proveravano je uživo na Izumiju 0.5.9, 2026-11-21, sa Claude Code: stranica odobravanja je prikazala ime prijavljene osobe (admin kompanije koji se prijavio Microsoftom), posle Approve se token pojavio na My tokens and profile kao povezana aplikacija sa `read` i `propose`, a Revoke ga je uklonio. Nije proveravano uživo: claude.ai i ChatGPT kao osoba prijavljena Microsoftom. Probajte jednom sa svojom aplikacijom pre nego što se OAuth ponudi firmi sa Microsoft 365.
+- Veza traje 90 dana od poslednjeg odobravanja, pa klijent traži novo povezivanje. Refresh token klijenta važi 30 dana: klijent koji se 30 dana ne koristi mora da se poveže ponovo ranije (iz koda).
+
+## Rešavanje problema
+
+| Šta vidite | Šta proveriti |
+|---|---|
+| Aplikacija ne startuje sa `TB_OAUTH=on`, log kaže `TB_OAUTH=on needs an https TB_PUBLIC_URL`, `... without a path`, `... needs TB_PUBLIC_URL` ili `... needs TB_MASTER_KEY` (iz koda) | `TB_PUBLIC_URL` mora biti `https` bez putanje, i `TB_MASTER_KEY` mora postojati. `TB_OAUTH` mora biti tačno `on` ili `off`. |
+| Klijent javlja `invalid_client` | CIMD poziv nije uspeo (zatvorena mreža, ili adresa nije na `claude.ai` ili `chatgpt.com`). Uključite DCR ili registrujte klijenta unapred. |
+| Povezani klijent odjednom traži novo povezivanje | Nije korišćen 30 dana (refresh token ističe) ili je prošlo 90 dana od odobravanja. Takođe: Svako osvežavanje daje klijentu novi refresh token. Ako se već iskorišćen (rotiran) refresh token ponovo pojavi, cela veza se prekida i osoba povezuje klijenta iznova. Ili je veza opozvana na strani **Moji tokeni i profil**. |
+| Posle promene `TB_MASTER_KEY` povezivanje pada | Pokrenite `./tb admin oauth rotate-keys --reset` i restartujte `app`. |
+| Klijent u zatvorenoj mreži ne može da se poveže | `TB_OAUTH_CIMD=off`, pa DCR ili unapred registrovan klijent. |

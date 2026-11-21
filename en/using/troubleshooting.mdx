@@ -1,0 +1,62 @@
+---
+title: "Troubleshooting"
+description: "The most common problems and how to fix them."
+---
+
+Checked on Izumi 0.5.7, 2026-11-20.
+
+Here are the messages and situations from the pages of this tab in one place: what you see, what it means, and what to do. The details are on the page of each topic.
+
+## Search and documents
+
+| What you see | What it means | What to do |
+|---|---|---|
+| "No results for this query." | The filters exclude everything, or you have no role in the domain with those documents. | Remove the filters or change the query. [Search](/en/using/search) |
+| "The query needs at least 2 characters." | The query is too short. | Type at least two characters. |
+| "The search failed." | A temporary error. | Try again. If it keeps happening, tell your company admin. |
+| The results are not what you were looking for | Search returns the closest matches, not only exact ones. | Open the passage (eye icon) and check. Narrow it with the **Domain** filter. |
+| A document exists, but you do not see it | You have no role in its domain. | Ask your company admin. [Documents](/en/using/documents) |
+| "Document not found." | The document was removed, or you have no access to the domain. | Go back to the list and check the filters. |
+| "The document has no text." | The source is empty, or the text could not be read. | Tell your company admin, who can see it in **Import report**. |
+| "You have no role in any domain." | You were not given a role in any domain. | Ask your company admin to give you a role. |
+| An AI tool returns nobody when asked who knows | The topic is not in the "Ask me about" field or in the **Contributors** of the documents you can see. | Enter your topics and save them for the right company. [Who knows](/en/using/who-knows) |
+
+## Proposals
+
+| What you see | What it means | What to do |
+|---|---|---|
+| "There are no proposals for your domains." | Nothing is pending, or you are not an editor of any domain. | Try **All** and **My proposals**. [Proposals and review](/en/using/proposals) |
+| Proposal not found | The proposal was decided, withdrawn or expired, or it is not yours to review. | Open it from the list with the status **All**, or ask the proposer. |
+| "This proposal can no longer be decided." | Someone already decided it, or the proposer withdrew it. | Refresh the list. |
+| "Enter a reason." | A reason for the rejection is required. | Enter a reason in the **Reject the proposal** dialog. |
+| An approved note is not found right away | The note shows up "shortly". | Wait a few minutes and search by words from the text. |
+
+## Tokens and log
+
+| What you see | What it means | What to do |
+|---|---|---|
+| "You have 50 active tokens." | You reached the limit. | Revoke a token you do not use. [My tokens and log](/en/using/tokens-and-log) |
+| "The narrowing is not allowed." | You chose a company or domain that is not available to you. | Remove the narrowing or choose others. |
+| You lost a token | A token is shown only once. | Revoke it and create a new one. |
+| You do not see a colleague's entry in the log | Only a company admin sees everyone's entries. | Expected behavior. |
+
+## Structure & health
+
+| What you see | What it means | What to do |
+|---|---|---|
+| The map is empty in a narrow window | The screen needs a wide window (by the code, at least 900 px). | Widen the window. [Structure & health](/en/using/structure-and-health) |
+| "Structure & health did not load. The other screens still work." | A loading error. | Refresh the page. The rest of Izumi works. |
+| "You have no role in any domain, so the view is empty." | You have no role in any domain. | Your company admin gives you a role in **Companies and members**. |
+| A domain is stale, but its documents were updated recently | The source may not be sending new versions. | Check the state of the source on the domain card: **Lagging**, **Paused** or **Error**. |
+
+## Web clip
+
+| What you see | What it means | What to do |
+|---|---|---|
+| "Enter the server address and the clip token in the settings first." | The extension is not set up. | Click **Open settings**. [Web clip](/en/using/web-clip) |
+| "The token is not valid." | The token was revoked or expired. | Create a new one in **My tokens and profile**. |
+| "This is not a clip token." | You pasted another kind of token. | Use the token that starts with `tb_clip_`. |
+| "The server cannot be reached. Your draft is kept." | The server does not respond. | Click **Try again**. |
+| "This page is already in Izumi in a domain you cannot edit, so it cannot be saved here." | Someone saved the page to another domain. | Choose a domain where you are an editor, or ask the editor of that domain. |
+| "You cannot save pages anywhere yet." | You are not an editor of any domain. | Ask your company admin for the editor role. |
+| The clip is neither in the list nor on the card | The card is visible only while the clip waits to be processed, or as **Not added** with a reason (described from the code). | Refresh the list and send the page again. |

@@ -1,0 +1,53 @@
+---
+title: "How access works"
+description: "Who sees what in Izumi, and why."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21.
+
+Access in Izumi rests on three terms: company, domain and role. The same rules apply to you and to every AI tool you connect.
+
+## Company, domain and role
+
+- The company is the data boundary. Another company does not see your documents, sources or access records.
+- Inside a company there are domains, areas of knowledge such as Finance or HR.
+- A role binds a person to one domain. A member sees only documents from domains where they have a role.
+
+| Role | What it does |
+|---|---|
+| **Reader** | Reads and searches the documents of a domain. |
+| **Editor** | Everything a reader does, sends web clips into the domain and approves or rejects the proposed notes of that domain. |
+| **Company admin** | Manages members, domains, sources and settings. Is not automatically an editor of any domain. |
+
+## An AI tool has your rights, no more
+
+- A connected AI tool sees only what you may see, in all your companies.
+- When you connect over OAuth, reading is always on. Proposing notes is optional and you can switch it off when you connect. You can narrow a personal token to some companies and domains.
+- The connection lasts at most 90 days. You revoke it yourself on **My tokens and profile**.
+
+## How people get in
+
+- By invitation only. The server operator creates the first one, a company admin creates all others. The link is valid for 72 hours and works once.
+- Izumi does not send email (from the code). The admin sends the link through a channel they trust.
+- There are no passwords: you sign in with a Google or Microsoft account. Both were checked live on Izumi 0.5.8: Google, and Microsoft with a work account on a test tenant.
+
+## Who decides on proposals
+
+- The editor of the domain the proposal is for decides, in the **Review queue**.
+- A company admin who is not an editor does not see that domain's proposals. Every domain needs at least one editor, otherwise proposals wait until they expire.
+
+## Who asked what
+
+- The **Access log** records every call: from the web, from AI tools, from the web clip extension and through the push API. An admin sees everyone in the company, a member sees only their own.
+- A document title in the log is visible only to someone who may read that document. Everyone else sees just a count.
+- How long records are kept is set by the company, 365 days by default.
+
+## Limits
+
+- What you may not see appears in neither the results nor the result count.
+
+## Next
+
+- For admins: [Companies, domains, roles](/en/admin/companies-domains-roles), [People and invitations](/en/admin/people), [Review queue](/en/admin/review-queue) and [Access log](/en/admin/access-log).
+- For users: [Proposals and review](/en/using/proposals), [My tokens and log](/en/using/tokens-and-log) and the [AI tools overview](/en/ai-tools/overview).
+- How sign-in is set up: [Sign-in (Google, Entra)](/en/install/sign-in).

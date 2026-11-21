@@ -1,0 +1,88 @@
+---
+title: "Backup and restore"
+description: "How to take and restore a backup."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21: `./tb backup`, the monthly restore check and `./tb restore` live on a throwaway stack (Docker Desktop, Mac, arm64), and the nightly backup and file ownership on production by reading.
+
+The `backup` service makes an encrypted copy of the whole database every night. This page describes what is kept, how to take a copy right now, how to check every month that a copy restores, and how to restore an install.
+
+## What gets made
+
+- Every night at `TB_BACKUP_HOUR:00` (time from `TZ`, by default 2 o'clock in `Europe/Belgrade`) the `backup` service runs `pg_dump -Fc` as the superuser, encrypts the output with the key `TB_BACKUP_KEY` (gpg, AES256) and writes `TB_BACKUP_DIR/daily/tb-<UTC time>-<version>.dump.gpg` with `<file>.manifest.json` next to it (row count per table, no data).
+- The first backup of a month is also kept in `monthly/`. 14 daily and 6 monthly copies remain.
+- With `TB_BACKUP_REMOTE` every file is also copied there and rotated the same way.
+- A failed night leaves no file: the next night tries again. If only the copy to `TB_BACKUP_REMOTE` fails, the local file stays.
+
+This was verified on Izumi production (2026-11-21): `daily/` holds pairs like `tb-20261121T010001Z-0.5.7.dump.gpg` and `.manifest.json` (14 copies and 14 manifests), `monthly/` exists, and `TB_BACKUP_REMOTE` is not set.
+
+## A copy right now and the age check
+
+```
+./tb backup     # one copy now; prints the file
+./tb status     # shows the age of the last copy
+```
+
+- The files are owned by root with mode 0600, and the folders have mode 0700. Reading, listing and copying need root or `sudo`: `sudo ls -l backups/daily`.
+- Set an alarm for a copy older than one day, see [Monitoring](/en/install/monitoring).
+
+## Keys
+
+- `TB_MASTER_KEY` is never in the backup or in the `backup` service. A full recovery needs both keys: `TB_BACKUP_KEY` (to decrypt the file) and `TB_MASTER_KEY` (to read the company keys inside it).
+- Keep a copy of each key off the server, in two different places (for example two entries in a password manager that different people can open). Never next to the backup and never in `TB_BACKUP_REMOTE`. Losing either key loses the backups.
+- Copy backups off the server: mount a remote directory and set `TB_BACKUP_REMOTE`, or copy `backups/` with your own tool (as root). A backup on the same disk does not survive losing the server.
+
+## Monthly restore check
+
+Once a month restore the newest copy into a trial stack. The script `scripts/ops/restore-test.sh --from <file>` starts a temporary project `tbp4-restore-b` (ports 18082 and 18092, image `team-brain:tbp4-restore`), restores the file with the keys from the install's env file, runs the after-restore check (row counts against the manifest, the security catalog, no identity sees anything) and removes the trial stack. The install is not touched.
+
+```
+tag=$(sed -n 's/^TB_IMAGE_TAG=//p' .env | tail -n 1)    # the release the install runs
+docker tag "team-brain:$tag" team-brain:tbp4-restore
+mkdir -p ~/restore-test
+sudo cp backups/daily/tb-<time>-<version>.dump.gpg backups/daily/tb-<time>-<version>.dump.gpg.manifest.json ~/restore-test/
+sudo chown "$USER" ~/restore-test/*
+scripts/ops/restore-test.sh --from ~/restore-test/tb-<time>-<version>.dump.gpg --env .env --out ~/restore-test/result-$(date +%F).md
+rm ~/restore-test/*.dump.gpg
+```
+
+- The `docker tag` line makes the trial stack use the image of the release the install runs, so the script builds nothing. Without internet it is required: building the image downloads npm packages and fails.
+- Exit 0 and a result file mean the copy restores.
+- The trial stack starts a second embedder. On a server with 8 GB run the test in a quiet hour, or on another machine with a copy of the backup and both keys. On the throwaway stack the install's own embedder was stopped for the test, because two embedders do not fit in 8 GB.
+
+## Restore
+
+`./tb restore <file>` restores a copy into an empty stack.
+
+- It refuses (exit 3, nothing changes) when `tb.company` or `tb_audit.log` have rows.
+- The manifest must be next to the file.
+- The steps are printed, and an error names the step: it starts `db`, checks that the stack is empty, stops `app`, `worker` and `backup`, decrypts and verifies the file (a wrong key or a damaged file stops here), creates the database and roles again as in a new install, runs `pg_restore`, runs `migrate`, brings the stack up as `docker compose up -d` (without the worker), waits for `/healthz`, runs the after-restore check and only then starts `worker` and waits for `/readyz`.
+- The worker stays off until the check passes: the restored copy holds a live Google refresh token and would otherwise sync the real Drive and change the counts the check compares. If the check fails, the worker stays stopped.
+
+Restoring over a broken install:
+
+```
+docker compose down
+docker volume rm team-brain_db-data
+sudo ./tb restore backups/daily/tb-<time>-<version>.dump.gpg
+```
+
+- `sudo` is needed because the backup folders belong to root. `sudo` drops the variables of your shell: with another directory name run `sudo TB_COMPOSE_PROJECT=team-brain ./tb restore <file>`.
+- On a new server first install as in [Install](/en/install/install) with the old `TB_MASTER_KEY` and `TB_BACKUP_KEY` in `.env` (new role passwords are fine), copy the backup and manifest there, then run `./tb restore <file>` while the stack is empty.
+
+## Limits
+
+- Restoring without the old `TB_MASTER_KEY` brings back the rows, but the company keys cannot be unwrapped.
+- `./tb restore` works only on an empty stack.
+- A backup on the same disk does not protect against losing the server: copy it off the server.
+- A backup grows with the number of text chunks. The pilot corpus of 43 documents gives a 1.1 MB backup (from the guide, not measured in this check).
+
+## Troubleshooting
+
+| What you see | What to check |
+|---|---|
+| `./tb backup` fails | `TB_BACKUP_KEY` is not in `.env`, or `pg_dump` or gpg failed (see the command output). A manual backup does not need the `backup` service to run. |
+| The last copy is older than a day | Look at `docker compose logs backup`. A failed night leaves no file. |
+| `./tb restore` says the file does not exist | You ran it without `sudo`: the folders belong to root. |
+| `./tb restore` exit 3 | The stack is not empty. Remove the database volume as above. |
+| Restore stops at decryption | Wrong `TB_BACKUP_KEY` or a damaged file. |

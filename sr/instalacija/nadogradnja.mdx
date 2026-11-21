@@ -1,0 +1,89 @@
+---
+title: "Nadogradnja"
+description: "Kako se prelazi na novu verziju."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21: `./tb upgrade` uživo na probnom steku (Docker Desktop, Mac, arm64), a produkcija čitanjem.
+
+Nadogradnja je jedna komanda, `./tb upgrade <verzija>`, koja prvo pravi backup, pa menja verziju. Ova stranica opisuje korake, izlazne kodove i put nazad.
+
+## Pre nadogradnje
+
+- Pročitajte `CHANGELOG.md` novog izdanja. Svaki unos kaže "No migration" ili imenuje migraciju i kako se vraća. Na primer, 0.5.3 je imao jednu migraciju (`0036_pending_clips.sql`, samo nova funkcija), a većina izdanja 0.5.x nema nijednu.
+- Proverite da `.env` ima `TB_BACKUP_KEY`. Nadogradnja bez njega staje, jer prvo pravi backup.
+- Migracija može da zaključa tabelu: planirajte prozor. `app`, `worker` i `backup` su tokom nadogradnje ionako zaustavljeni.
+
+## Nadogradite
+
+<Steps>
+  <Step title="Stavite fajlove novog izdanja u direktorijum i napravite sliku">
+    ```
+    docker build -t team-brain:<verzija> .
+    ```
+  </Step>
+  <Step title="Proverite TB_BACKUP_KEY">
+    ```
+    grep -c '^TB_BACKUP_KEY=.' .env
+    ```
+
+    Mora ispisati 1.
+  </Step>
+  <Step title="Pokrenite nadogradnju">
+    ```
+    ./tb upgrade <verzija>
+    ```
+  </Step>
+</Steps>
+
+`./tb upgrade` redom:
+
+1. Pravi backup (greška staje nadogradnju sa izlazom 4 i ništa ne menja).
+2. Koristi sliku ako postoji lokalno, inače pokušava `docker compose pull` (neuspeh staje sa izlazom 1).
+3. Zaustavlja `app`, `worker` i `backup`.
+4. Pokreće `migrate` sa novom slikom.
+5. Kopira env fajl u `.env.bak-<stara verzija>` i upisuje `TB_IMAGE_TAG=<verzija>`.
+6. Pokreće `app`, `worker` i `backup`.
+7. Čeka `/readyz` (`TB_READY_WAIT` sekundi, podrazumevano 120).
+
+Na kraju ispisuje staru i novu verziju, fajl backupa i primenjene migracije.
+
+## Izlazni kodovi
+
+| Kod | Značenje |
+|---|---|
+| 1 | Slika nije ni lokalno ni dostupna za preuzimanje, ili zaustavljanje servisa ili upis env fajla nije uspeo (iz koda). |
+| 2 | Verzija nije `MAJOR.MINOR.PATCH`, ili je to već verzija koja radi, ili je prethodna nadogradnja pala i vraćanje nije završeno. |
+| 4 | Backup nije uspeo. Ništa nije promenjeno. |
+| 5 | `migrate` je pao. `app`, `worker` i `backup` ostaju zaustavljeni, jer je šema možda napola migrirana i nijedna verzija ne sme da radi na njoj (a noćni backup takve baze stajao bi pored čistog). |
+| 6 | Nova verzija nije postala spremna u `TB_READY_WAIT` sekundi, ili `app` i `worker` nisu startovali. |
+
+## Put nazad posle neuspeha
+
+Posle izlaza 5 ili 6 (i posle greške pri upisu env fajla) `./tb upgrade` ispisuje put nazad sa vašim putanjama. Pokrenite redove kako su ispisani, samo što poslednjem dodajete `sudo` (ispisani red ga nema):
+
+```
+cp .env.bak-<stara verzija> .env          # samo posle izlaza 6
+docker compose -p team-brain --env-file .env down
+docker volume rm team-brain_db-data
+sudo TB_COMPOSE_PROJECT=team-brain TB_ENV_FILE=.env ./tb restore <fajl backupa>
+```
+
+- `sudo` dodajete sami: folderi sa backupom pripadaju root-u, a bez root-a `./tb restore` ne vidi fajl i javlja da ne postoji (`tb: restore: no such file`). Ispisani red počinje sa `TB_COMPOSE_PROJECT=...`. Ostavite ga celog i stavite `sudo` ispred njega, jer `sudo` odbacuje promenljive vaše ljuske.
+- Dok vraćanje nije završeno, `./tb upgrade` odbija da radi (izlaz 2) i ispisuje iste redove, jer bi novi backup držao napola migriranu bazu. To beleži u `.env.upgrade-failed`.
+- Ako je posle izlaza 6 nova verzija kasnije ipak postala spremna i zadržavate je, obrišite `.env.upgrade-failed`.
+- Detalji vraćanja: [Backup i restore](/sr/instalacija/backup).
+
+## Ograničenja
+
+- Nadogradnja zaustavlja servis na vreme migracije.
+- Novu sliku ne pravi `./tb upgrade`: pravite je vi (ili je povlači `docker compose pull` ako postoji u registru).
+- Put nazad je vraćanje iz backupa, ne obrnuta migracija.
+
+## Rešavanje problema
+
+| Šta vidite | Šta proveriti |
+|---|---|
+| Izlaz 4 | `TB_BACKUP_KEY` nedostaje ili pravljenje kopije nije uspelo: `./tb backup` pokazuje razlog. |
+| Izlaz 2 i ispisani put nazad | Prethodna nadogradnja je pala: završite vraćanje kao gore. |
+| Izlaz 6 | `docker compose logs app worker embedder`. Embedder možda još učitava model. |
+| `./tb upgrade` kaže da stek već radi tu verziju | `./tb --version`. |

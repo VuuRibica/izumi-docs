@@ -1,0 +1,73 @@
+---
+title: "Prva prijava i admin"
+description: "Napravite prvog administratora."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21: komande servera uživo na probnom steku iz stranice [Instalacija](/sr/instalacija/instalacija) (novi Docker stek na Mac računaru, arm64, Docker Desktop), a strana aplikacije posle prijave uživo na produkciji.
+
+Ljudi se prijavljuju Google ili Microsoft nalogom, lozinki nema. Prvi put je potrebna pozivnica. Na novoj instalaciji još nema nikoga ko može da pozove, pa firmu i prvu pozivnicu pravi operator komandom na serveru.
+
+## Napravite firmu i prvu pozivnicu
+
+Komande rade u jednom privremenom kontejneru slike. Ne trebaju Node, npm ni internet na serveru. Čitaju `DATABASE_URL_OWNER` i `TB_PUBLIC_URL` iz `.env`.
+
+<Steps>
+  <Step title="Napravite firmu">
+    Slug je kratko ime bez razmaka, a `--name` je ime koje ljudi vide. Osobu možete odmah da napravite, ali nije obavezno: pozivnica je dovoljna.
+
+    ```
+    ./tb admin company create acme --name "Acme d.o.o."
+    ./tb admin person create --name "Ana Anić" --email ana@acme.example
+    ```
+
+    Komanda `person create` ima i `--locale` (`sr-Latn` ili `en`, podrazumevano `sr-Latn`), jezik prikaza.
+  </Step>
+  <Step title="Napravite pozivnicu">
+    ```
+    ./tb admin invitation create acme ana@acme.example --admin
+    ```
+
+    Komanda ispiše link `<TB_PUBLIC_URL>/invite/<tajna>` samo jednom (`--json` ga ispisuje kao JSON). U bazi se čuva samo hash, pa izgubljen link ne može da se prikaže ponovo: pokrenite komandu opet i dobijate novi, a prethodna pozivnica se poništava. Link važi 72 sata i može se iskoristiti jednom. `--admin` daje osobi ulogu admina firme, a bez nje osoba je običan član. U zapis o pristupu ulazi `invite.create`.
+  </Step>
+  <Step title="Otvorite link i prijavite se">
+    Otvorite link u pregledaču i prijavite se pozvanim nalogom. Završavate na strani **Moji tokeni i profil**, kao admin firme. Provajder prijave mora biti podešen, vidi [Prijava](/sr/instalacija/prijava).
+  </Step>
+  <Step title="Pozovite ostale iz aplikacije">
+    Sve ostale pozivate na strani **Firme i članovi**, dugmetom **Pozovi člana**. Dijalog je opisan u [Korisnici i pozivnice](/sr/admin/korisnici): ne treba vam više komanda na serveru.
+  </Step>
+</Steps>
+
+## Operatorski upload foldera
+
+Ovo je za slučaj kad hoćete da stavite folder sa Markdown ili tekstualnim fajlovima u red za uvoz, bez veb strane. Treba tri stvari: domen, izvor tipa upload čija pravila mapiraju folder na taj domen, i privremeni kontejner koji vidi folder.
+
+```
+./tb admin domain create acme general --sr opste --en general
+cat > rules.json <<'EOF'
+{ "include": [ { "folderId": "files", "path": "files", "domain": "general", "recursive": true } ], "types": ["md", "txt"] }
+EOF
+docker compose run --rm -v "$PWD/rules.json:/rules.json:ro" migrate node dist/cli.js admin source create acme --kind upload --name operator --rules /rules.json
+docker compose run --rm -v "$PWD/files:/files:ro" migrate node dist/cli.js ingest upload /files --company acme --source operator
+```
+
+- Putanja svakog fajla počinje imenom foldera koji montirate (`/files` daje `files/...`), a pravila gađaju tu putanju: `folderId` i `path` su zato `files`.
+- `ingest upload` i `ingest remove` nalaze izvor po imenu, pa svaki izvor firme mora imati svoje ime. Uz dva izvora istog imena komande staju sa greškom `company acme has 2 sources named operator`.
+- Izvor bez pravila (ili sa pravilima za domen koji ne postoji) isključuje svaki fajl: upload ispiše `excluded:` i `queued 0 file(s)`.
+- Servis `worker` indeksira fajlove u redu, ne treba nijedna dodatna komanda. Pratite `docker compose logs worker`.
+
+Ostale operatorske komande: `./tb admin --help`. Operatorske radnje se u zapis o pristupu upisuju kao `system`.
+
+## Ograničenja
+
+- Firme se prave samo operatorskom komandom, ne iz aplikacije.
+- Pozivnica važi 72 sata i jednom. Link se ne može ponovo prikazati.
+- Ova stranica pokriva samo prvog admina i operatorski upload. Ljudi, uloge i izvori u aplikaciji su u kartici Administracija.
+
+## Rešavanje problema
+
+| Šta vidite | Šta proveriti |
+|---|---|
+| Link pozivnice ne radi | Istekao je (72 sata), već je iskorišćen ili je zamenjen novom pozivnicom. Napravite novu. |
+| Prijava ne prolazi sa pozvanom adresom | Google veruje samo adresama koje je sam potvrdio. Kod Microsofta bez opcionog `email` podatka Izumi poredi `preferred_username`, koji može biti drugačiji od pozvane adrese (vidi [Prijava](/sr/instalacija/prijava)). |
+| Stranica prijave kaže _"Prijava još nije podešena. Obratite se administratoru ove instalacije."_ | Nijedan provajder nije podešen (`TB_OIDC_*`), vidi [Prijava](/sr/instalacija/prijava). |
+| Upload ispiše `queued 0 file(s)` | Pravila izvora ne pogađaju putanju fajlova ili domen ne postoji. |

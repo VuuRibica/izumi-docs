@@ -1,0 +1,82 @@
+---
+title: "Brisanje i čuvanje"
+description: "Šta se briše, kada i kako."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21.
+
+Ova stranica kaže šta se briše kada nešto uklonite, šta ostaje i koliko dugo se čuvaju zapisi. Svako pravilo ima izvor: proverili smo ga uživo, ili je iz koda ili iz vodiča za instalaciju dokumenta proizvoda.
+
+## Šta se briše kada...
+
+| Radnja | Šta se briše | Šta ostaje | Izvor |
+|---|---|---|---|
+| Obrišete izvor (**Obriši izvor**) | Izvor i svi dokumenti koje je uvezao, sa tekstom i indeksom za pretragu. Ne može se poništiti. | Fajlovi u spoljnom sistemu (Drive, SharePoint). Redovi u logu pristupa. | Uživo (Drive, Upload, Push, Web clip, SharePoint) |
+| Fajl nestane iz spoljnog izvora | Dokument se uklanja pri sledećem uvozu (ishod **Uklonjeno** u **Izveštaj uvoza**). | Zapis u logu. | Iz koda |
+| Izmenite pravila uvoza tako da fajl više nije uključen | Dokument se uklanja pri sledećem uvozu. Potvrda **Sačuvati pravila?** unapred kaže koliko dokumenata se uklanja. | Fajl u spoljnom sistemu. | Uživo (potvrda), iz koda (uklanjanje) |
+| Uklonite člana (**Ukloni**) | Članstvo u firmi i sve njegove uloge. | Nalog osobe i svi dokumenti koje je dodala. | Iz teksta dijaloga i vodiča za instalaciju |
+| Opozovete token (**Opozovi**) | Token odmah prestaje da važi. | Zapisi u logu o njegovoj upotrebi. | Uživo |
+| Opozovete pozivnicu (**Opozovi**) | Pozivnica se poništava. | Ništa drugo. | Uživo |
+| Arhivirate domen (**Arhiviraj**) | Odmah ništa. Pri sledećem uvozu Drive i Microsoft izvora dokumenti tog domena se uklanjaju. Uloge u domenu više ne daju pristup. | Uloge (bez pristupa) i ostali dokumenti. | Iz koda |
+| Odobrite predlog | Ništa. Beleška nastaje. | Predlog sa statusom **Odobreno**. | Uživo |
+| Predlog istekne (30 dana) | Ništa. Status postaje **Isteklo**. | Predlog, bez teksta beleške u pretrazi. | Iz koda |
+| Obrišete dokument pushovan API-jem (`DELETE`) | Taj dokument. Samo vlasnik id-a, dok je urednik domena. | Ostali dokumenti iz izvora Push. | Iz dokumentacije push API-ja, nije provereno uživo |
+
+## Šta ne možete da obrišete iz web strane
+
+- Pojedinačan dokument. Lista **Dokumenti** i stranica dokumenta nemaju brisanje. Dokument uklanjate brisanjem izvora, sa izvora, ili kroz push API.
+- Pojedinačan web clip isečak. Briše se ceo izvor **Web clip**, a tada nestaju svi isečci firme.
+- Odobrenu belešku. Briše se samo ceo izvor beleški, a tada nestaju sve odobrene beleške firme (iz koda).
+- Firmu i nalog osobe. To radi operator servera, vidi dole.
+
+<Warning>
+Izvor beleški i izvor **Web clip** imaju istu komandu **Obriši izvor** kao ostali izvori, ali njihovo brisanje briše sve odobrene beleške, odnosno sve isečke firme. Budite sigurni pre nego što kliknete **Obriši**.
+</Warning>
+
+## Brisanje izvora
+
+<Steps>
+  <Step title="Otvorite meni izvora">
+    Na kartici izvora otvorite meni sa tri tačke i izaberite **Obriši izvor**. Koraci sa slikama su na stranici [Izvor: Google Drive](/sr/admin/izvori-drive).
+  </Step>
+  <Step title="Potvrdite">
+    Dijalog **Obrisati izvor?** kaže: _"Izvor „…” i svi dokumenti koje je uvezao (N dokumenata) biće uklonjeni iz Izumija. Ovo se ne može poništiti."_ Kliknite **Obriši**. Poruka je _"Izvor je obrisan."_
+  </Step>
+  <Step title="Pogledajte log">
+    Za svaki uklonjen dokument u [Log pristupa](/sr/admin/log-pristupa) nastaje red `doc.removed` (u filteru **Radnja**: Dokument uklonjen) (iz koda). Naslov ni putanja se ne prikazuju u logu na vebu.
+  </Step>
+</Steps>
+
+Brisanje je odbijeno dok je uvoz izvora u toku (iz koda). Sačekajte da se uvoz završi i ponovite.
+
+## Koliko se čuvaju zapisi
+
+- **Log pristupa** se čuva po firmi: podrazumevano 365 dana, najmanje 30 i najviše 3650. Admin menja rok u **Čuvanje zapisa o pristupu (dani)** (vidi [Kompanije, domeni, uloge](/sr/admin/kompanije-domeni-uloge)).
+- Radnik jednom dnevno briše zapise starije od roka (iz vodiča za instalaciju). Zapisi obrisane firme ili osobe ostaju dok im ne istekne rok.
+- Radnik jednom na sat postavlja status **Isteklo** predlozima starijim od 30 dana (iz koda).
+- Izumi ne briše dokumente po roku. U kodu postoji samo čišćenje zapisa o pristupu i isteklih podataka za povezivanje AI alata (iz koda).
+
+## Brisanje koje radi operator
+
+Operator servera (ne admin firme) radi ove komande iz vodiča za instalaciju dokumenta. Opisujemo ih zato što klijent može da ih traži.
+
+- Brisanje osobe (GDPR zahtev). Briše nalog osobe i podatke o pristupu: povezane naloge, tokene, sesije, članstva, uloge i profile. Sve što je ušlo u bazu znanja ostaje svojina firme, a gde se osoba pominje, ime postaje "Bivši član". Brisanje je odbijeno dok traje uvoz, pa se ponovi posle uvoza.
+- Brisanje firme. Prvo se briše ključ firme, pa svi redovi firme: dokumenti, delovi teksta, izvori, tajne, predlozi, profili, članstva, uloge i poslovi. Zapisi o pristupu ostaju dok im ne istekne rok.
+- Uklanjanje člana iz jedne firme radi i admin firme na **Firme i članovi**, i operator komandom. Završava samo članstvo i uloge.
+- Opoziv tokena može i operator.
+
+Tačne komande su u vodiču za instalaciju proizvoda i nisu deo ove stranice.
+
+## Ograničenja
+
+- Brisanje izvora se ne može poništiti.
+- Dokument obrisan sa izvorom se vraća samo novim uvozom ili novim otpremanjem, ako izvor opet postoji.
+- Fajlovi u Drive-u i SharePoint-u se nikad ne menjaju ni brišu (iz koda: Izumi traži samo dozvole za čitanje).
+
+## Rešavanje problema
+
+- _"Radnja trenutno nije moguća: uvoz ili probni prolaz ovog izvora je u toku ili je izvor pauziran."_ Sačekajte kraj posla pa ponovite brisanje.
+- Dokument je nestao iako ga niste obrisali. Izvor ga više nema, ili ga pravila uvoza više ne uključuju. Pogledajte ishod **Uklonjeno** u **Izveštaj uvoza**.
+- Dokument se i dalje vidi posle brisanja izvora. Osvežite listu. Ako je i dalje tu, dokument pripada drugom izvoru.
+- Starog zapisa u logu više nema. Prošao je rok iz **Čuvanje zapisa o pristupu (dani)**.
+- Osoba traži brisanje svih svojih podataka. To je zahtev za operatora servera, ne za web stranu.

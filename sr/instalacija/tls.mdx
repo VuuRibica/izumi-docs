@@ -1,0 +1,72 @@
+---
+title: "TLS"
+description: "Sertifikat i HTTPS."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21 (kod i produkcija, samo čitanje).
+
+Izumi treba HTTPS adresu. `proxy` profil stavlja Caddy ispred aplikacije: dobija sertifikat za `TB_PUBLIC_HOST` od javnog sertifikacionog tela (Let's Encrypt podrazumevano) i prosleđuje saobraćaj aplikaciji.
+
+## Podesite TLS
+
+<Steps>
+  <Step title="Usmerite DNS ime na server">
+    Napravite A zapis za ime servera (eksplicitan zapis pobeđuje zapis sa džokerom u zoni). Otvorite portove 80 i 443. Ako domen ima CAA zapise, jedan od njih mora dozvoliti `letsencrypt.org`.
+  </Step>
+  <Step title="Postavite vrednosti u .env">
+    ```
+    TB_PUBLIC_URL=https://brain.example.com
+    TB_PUBLIC_HOST=brain.example.com
+    TB_TRUSTED_PROXIES=172.29.88.10
+    TB_HTTP_PORT=127.0.0.1:8080
+    ```
+
+    `172.29.88.10` je vrednost `TB_PROXY_IP` (podrazumevana adresa Caddy kontejnera).
+  </Step>
+  <Step title="Pokrenite sa profilom">
+    ```
+    docker compose --profile proxy up -d
+    ```
+
+    Da proksi ostane u svakom kasnijem `docker compose up -d`, dodajte u `.env` red `COMPOSE_PROFILES=proxy`.
+  </Step>
+</Steps>
+
+## Zašto baš ove vrednosti
+
+- `TB_HTTP_PORT=127.0.0.1:8080`: Docker objavljuje portove mimo zaštitnog zida na serveru (pravila `ufw` ih ne zaustavljaju), a port aplikacije ne sme biti dostupan spolja pored Caddy-ja.
+- Samo Caddy adresa u `TB_TRUSTED_PROXIES`: podmreža sadrži i Docker gateway, pa bi klijent koji pogodi port aplikacije direktno mogao da lažira `X-Forwarded-For` i zaobiđe ograničenje prijave po adresi. Nikad celu podmrežu, nikad `/0`.
+- Bez proksija ostavite `TB_TRUSTED_PROXIES` prazno.
+- Caddy prosleđuje Host zaglavlje nepromenjeno, pa provera imena za `/mcp` vidi `TB_PUBLIC_HOST`.
+
+## Sopstveni proksi umesto Caddy-ja
+
+Iza sopstvenog proksija stavite adresu tog proksija u `TB_TRUSTED_PROXIES`. Host zaglavlje mora stići nepromenjeno, jer provera imena za `/mcp` čita `TB_PUBLIC_HOST`. Ovaj način nije proveren uživo.
+
+## Proverite
+
+```
+curl -sI https://brain.example.com/ | head -5
+curl -sI http://brain.example.com/ | head -3
+echo | openssl s_client -connect brain.example.com:443 -servername brain.example.com 2>/dev/null | openssl x509 -noout -issuer -dates
+```
+
+Na produkciji Izumija proveren je ovaj rezultat (2026-11-21):
+
+- HTTP vraća 308 na `https` adresu.
+- Odgovor ima `strict-transport-security: max-age=31536000; includeSubDomains` i zaglavlje `via: 1.1 Caddy`.
+- Izdavalac sertifikata je Let's Encrypt. Sertifikat produkcije je izdat 2026-11-17, pa obnavljanje (koje Caddy radi sam) nije posmatrano.
+
+## Ograničenja
+
+- Caddy treba da dođe do sertifikacionog tela (Let's Encrypt) da dobije i obnovi sertifikat. Bez interneta Caddy ne može da dobije sertifikat: stavite ispred aplikacije svoj proksi sa sopstvenim sertifikatom (ovaj način nije proveren uživo, vidi gore), a za ostalo [Rad bez interneta](/sr/instalacija/bez-interneta).
+- Stara imena servera mogu da se preusmere na `TB_PUBLIC_HOST`: svaki fajl `*.caddy` u `deploy/redirects/` se uvozi. Izdanje 0.5.8 više ne donosi nijedan takav fajl, samo `deploy/redirects/README.md` sa primerom. Fajlove `*.caddy` dodajete sami: nisu u gitu i izdanje ih ne briše niti prepisuje. Staro ime mora u DNS-u da pokazuje na ovaj server, jer Caddy traži sertifikat i za njega.
+
+## Rešavanje problema
+
+| Šta vidite | Šta proveriti |
+|---|---|
+| Caddy ne dobija sertifikat | A zapis pokazuje na server, portovi 80 i 443 su otvoreni, CAA zapis dozvoljava `letsencrypt.org`. `docker compose logs caddy`. |
+| Aplikacija je dostupna i na `http://server:8080` spolja | `TB_HTTP_PORT` nije `127.0.0.1:8080`. |
+| Ograničenje prijave po adresi vidi uvek istu adresu | `TB_TRUSTED_PROXIES` nije adresa proksija (Caddy: vrednost `TB_PROXY_IP`). |
+| `/mcp` odbija zahteve | `TB_PUBLIC_HOST` nije tačno host kako ga klijenti šalju (sa `:port` kad port nije 80 ili 443). |

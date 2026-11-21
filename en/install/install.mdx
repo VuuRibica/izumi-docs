@@ -1,0 +1,154 @@
+---
+title: "Install"
+description: "Install Izumi on your server."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21: live on a throwaway stack (a new, empty Docker stack on a Mac, arm64, Docker Desktop with 8 GB, address `http://localhost:18080`), and the variables and service names also against the code and production (read only, no values).
+
+All commands run in the install directory unless a step says otherwise. Before you start, check the [Requirements](/en/install/requirements).
+
+## Files and image
+
+Put the release in a directory called `team-brain`, for example `/opt/team-brain`. The compose project is then called `team-brain`, both for `docker compose` (the `name:` field in `docker-compose.yml`) and for `./tb` (the directory name). If you use another directory name, set `TB_COMPOSE_PROJECT=team-brain` in the shell that runs `./tb`.
+
+```
+cd /opt/team-brain
+docker build -t team-brain:0.5.7 .
+```
+
+## The .env file
+
+All configuration is in the `.env` file in the install directory. Both `docker compose` and `./tb` read it. Never put it in git and never in the backup folder.
+
+<Steps>
+  <Step title="Create the file">
+    ```
+    cp .env.example .env
+    chmod 600 .env
+    ```
+  </Step>
+  <Step title="Generate the secrets straight into the file">
+    This way no secret is printed on screen or kept in the terminal history.
+
+    ```
+    set_env() { sed -i "s|^$1=.*|$1=$2|" .env; }
+    set_role() { p=$(openssl rand -hex 16); set_env "$1" "$p"; sed -i "s|^\($2=postgres://[^:]*:\)CHANGE_ME@|\1$p@|" .env; unset p; }
+    set_env TB_MASTER_KEY "$(openssl rand -base64 32)"
+    set_env TB_BACKUP_KEY "$(openssl rand -base64 32)"
+    set_env TB_METRICS_TOKEN "$(openssl rand -base64 32)"   # optional
+    set_env POSTGRES_PASSWORD "$(openssl rand -hex 16)"
+    set_role TB_OWNER_PASSWORD DATABASE_URL_OWNER
+    set_role TB_APP_PASSWORD DATABASE_URL_APP
+    set_role TB_WORKER_PASSWORD DATABASE_URL_WORKER
+    set_role TB_MAINT_PASSWORD DATABASE_URL_MAINT
+    grep -c CHANGE_ME .env    # 0: every DATABASE_URL has a password
+    ```
+
+    `set_role` writes one password into its own `TB_*_PASSWORD` line and into the `CHANGE_ME` of the matching `DATABASE_URL_*`. Base64 and hex values contain no `|` or `&`, so `sed` takes them as they are.
+  </Step>
+  <Step title="Set the address and the version">
+    In `.env` set `TB_PUBLIC_URL` (the address people open, for example `https://brain.example.com`, must be `https` except for `localhost`, `127.0.0.1` and `[::1]`), `TB_PUBLIC_HOST` (the same host) and `TB_IMAGE_TAG=0.5.7` (the `.env.example` file of release 0.5.7 has `TB_IMAGE_TAG=0.4.0`, so always set this value). For HTTPS in front of the app see [TLS](/en/install/tls).
+  </Step>
+</Steps>
+
+- Write values without quotes.
+- The database role passwords are set once, at the first start of an empty database. Changing `TB_*_PASSWORD` later does not change the role.
+- `TB_MASTER_KEY` is never in the backup. Keep a copy of `TB_MASTER_KEY` and `TB_BACKUP_KEY` off the server, see [Backup and restore](/en/install/backup).
+
+<Accordion title="All variables">
+
+"Required: yes" means the stack does not start without it. "Set it" means it starts, but not the way you want. Empty means the default value.
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `TB_IMAGE` | no | Image name without a tag (default `team-brain`). |
+| `TB_IMAGE_TAG` | set it | The version the stack runs, for example `0.5.7`. `./tb upgrade` rewrites it. Empty: compose uses the tag `local` and builds a new image from the directory instead of running yours. |
+| `TB_PUBLIC_URL` | yes | The address people open. Must be `https` except for `localhost`, `127.0.0.1` and `[::1]`. |
+| `TB_PUBLIC_HOST` | yes | The host from `TB_PUBLIC_URL`, exactly as clients send it in the Host header (with `:port` when the port is not 80 or 443). It is also the allow list of names for `/mcp` and the name Caddy requests a certificate for. |
+| `TB_HTTP_PORT` | no | The app port on the server (default `8080`, on all interfaces). With a proxy set `127.0.0.1:8080`. |
+| `TB_TRUSTED_PROXIES` | no | Exact addresses or CIDRs of proxies whose `X-Forwarded-For` the app honors. Empty trusts nobody. With the `proxy` profile: the value of `TB_PROXY_IP`. Never a whole subnet, never `/0`. |
+| `TB_NET_SUBNET` | no | Subnet of the compose network (default `172.29.88.0/24`). |
+| `TB_PROXY_IP` | no | Fixed address of the Caddy container (default `172.29.88.10`), inside `TB_NET_SUBNET`. |
+| `TB_MASTER_KEY` | yes | 32 random bytes, base64. Wraps the company keys that encrypt stored secrets (for example connector credentials). Never in the backup. |
+| `POSTGRES_PASSWORD` | yes | The database superuser. Stays inside the `db` and `backup` containers. |
+| `TB_OWNER_PASSWORD`, `TB_APP_PASSWORD`, `TB_WORKER_PASSWORD`, `TB_MAINT_PASSWORD` | yes | Passwords of the roles `tb_owner`, `tb_app`, `tb_worker` and `tb_maint`, set at the first start. |
+| `DATABASE_URL_OWNER` | yes | `tb_owner`: migrations and the operator command only. |
+| `DATABASE_URL_APP` | yes | `tb_app`: the app. |
+| `DATABASE_URL_WORKER` | yes | `tb_worker`: the worker. |
+| `DATABASE_URL_MAINT` | yes | `tb_maint`: deleting old access records in the worker. |
+| `TB_OIDC_GOOGLE_CLIENT_ID`, `TB_OIDC_GOOGLE_CLIENT_SECRET` | no | Sign-in with a Google account. Both or neither. See [Sign-in](/en/install/sign-in). |
+| `TB_OIDC_ENTRA_CLIENT_ID`, `TB_OIDC_ENTRA_CLIENT_SECRET` | no | Sign-in with a Microsoft (Entra ID) account. Both or neither. |
+| `TB_OIDC_ENTRA_TENANT` | no | `organizations` (default) or the GUID of one tenant. |
+| `TB_OAUTH` | no | `off` (default) or `on`: MCP clients connect through OAuth. See [OAuth](/en/install/oauth). |
+| `TB_OAUTH_CIMD`, `TB_OAUTH_DCR` | no | Read only with `TB_OAUTH=on`, each `on` (default) or `off`. |
+| `TB_GDRIVE_CLIENT_ID`, `TB_GDRIVE_CLIENT_SECRET` | no | The instance OAuth client for Google Drive. Both or neither. See [Connectors](/en/install/connectors). |
+| `TB_EMBED_PROVIDER` | no (default `tei`) | `tei` (local embedder) or `openai`. |
+| `TB_EMBED_URL` | no (default `http://embedder:80`) | The embedder address with `tei`. |
+| `TB_EMBED_MODEL` | no (default `BAAI/bge-m3`) | The active model. The embedder service loads the same model. |
+| `TB_EMBED_IMAGE` | no | Embedder image: `ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4` on amd64 (default), `cpu-arm64-1.9.4` on Apple Silicon. |
+| `TB_OPENAI_API_KEY` | with `openai` | OpenAI key. Only when a provider is `openai`. |
+| `TB_EMBED_NEXT_PROVIDER`, `TB_EMBED_NEXT_URL`, `TB_EMBED_NEXT_MODEL` | no | Embedder of the next model during a model change, all three or none. |
+| `TB_METRICS_TOKEN` | no | Bearer token for `GET /metrics`. Empty: `/metrics` answers 404. |
+| `TB_SSE_HEARTBEAT_MS`, `TB_SSE_MAX_MS` | no | The live knowledge map stream: a ping every 15 s, the stream ends after 15 minutes and the browser reconnects. |
+| `TB_BACKUP_DIR` | no | Where backups go (default `./backups`, with `daily/` and `monthly/`). |
+| `TB_BACKUP_KEY` | yes for backup | 32 random bytes, base64. Encrypts backups. Only the backup service gets it. `./tb backup` and `./tb upgrade` fail without it. |
+| `TB_BACKUP_REMOTE` | no | A directory on the server that you mount (for example NFS or rclone). Every backup is copied there and rotated the same way. |
+| `TB_BACKUP_HOUR` | no | Hour of the nightly backup (default `2`). |
+| `TZ` | no | Time zone for the backup hour (default `Europe/Belgrade`). |
+| `TB_PROPOSAL_EXPIRY_MS` | no | How often the worker voids expired proposals (default one hour). |
+| `TB_AUDIT_PURGE_MS` | no | How often the worker deletes access records older than the retention period (default one day). |
+| `TB_RETENTION_MIN_DAYS`, `TB_RETENTION_MAX_DAYS` | no | Narrow the range of days for the retention period (default 30 and 3650). |
+| `TB_LOG_LEVEL` | no | `trace`, `debug`, `info` (default), `warn` or `error`. |
+
+The table covers the variables of `.env.example`. Compose also reads `TB_NODE_IMAGE` (the base Node image when building), `TB_DB_IMAGE` (the image of the `backup` service) and `TB_EMBED_HOST_PORT` (the local embedder port, default 58080). The optional reranker (`TB_RERANK_*`) is off and not described here.
+
+In the shell, not in `.env`, you set: `TB_COMPOSE_PROJECT` (the compose project for `./tb`, default the directory name), `TB_ENV_FILE` (the env file for `./tb`, default `.env`) and `TB_READY_WAIT` (how many seconds `./tb restore` and `./tb upgrade` wait for `/readyz`, default 120). The line `COMPOSE_PROFILES=proxy` in `.env` keeps the proxy in every `docker compose up -d` (see [TLS](/en/install/tls)).
+
+</Accordion>
+
+## First start
+
+<Steps>
+  <Step title="Start the stack">
+    ```
+    docker compose up -d
+    docker compose ps
+    curl -s http://127.0.0.1:8080/readyz
+    ```
+
+    `docker compose up -d` starts `db`, runs `migrate`, then starts `app`, `worker`, `embedder` and `backup`. With a proxy add `--profile proxy`. At the first start the embedder downloads the bge-m3 model (about 2.2 GB) from `huggingface.co` into the model volume, which takes a few minutes.
+  </Step>
+  <Step title="Wait for readiness">
+    `/readyz` answers 503 until the database, the schema, the embedder and the worker heartbeat are fine, then 200 with `"ok":true`. The response body has `checks` for `db`, `schema`, `embedder` and `worker`. In production it looks like this:
+
+    ```
+    {"ok":true,"checks":{"db":true,"schema":true,"embedder":true,"worker":true}}
+    ```
+  </Step>
+  <Step title="Check the version and status">
+    ```
+    ./tb status
+    ./tb --version
+    ```
+
+    `./tb status` shows the containers, readiness (`readyz: ready`), the active embedder model and the age of the last backup. `./tb --version` prints the image tag the stack runs.
+  </Step>
+</Steps>
+
+The next step is the [first administrator](/en/install/first-admin).
+
+## Limits
+
+- The command to generate `.env` uses GNU `sed -i` (Linux). On macOS `sed` needs `sed -i ''`.
+- Changing `TB_*_PASSWORD` after the first start does not change the role password in the database: roles get it only at the first start of an empty database.
+- Without `TB_IMAGE_TAG` compose uses the tag `local` and builds the image from the directory. That is why `TB_IMAGE_TAG` is marked "set it" in the table.
+- The embedder needs internet at the first start. Without internet see [Running offline](/en/install/offline).
+
+## Troubleshooting
+
+| What you see | What to check |
+|---|---|
+| `/readyz` stays 503 | The response body says which `checks` is `false`. `docker compose ps` and `docker compose logs app worker embedder`. The model is still downloading in the first minutes. |
+| `/readyz` 503 and `embedder_model_mismatch` | The app has no embedder for the active model: check `TB_EMBED_MODEL` and `TB_EMBED_URL`. |
+| The app stops right away | Check `.env`: an ID without a secret (or the other way round) for Google sign-in, Entra sign-in or the Google Drive client stops the app at start. `grep -c CHANGE_ME .env` must give 0. |
+| `./tb` says `env file .env not found` | Run it in the install directory or set `TB_ENV_FILE`. |

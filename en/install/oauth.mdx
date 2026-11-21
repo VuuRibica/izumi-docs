@@ -1,0 +1,101 @@
+---
+title: "OAuth for MCP clients"
+description: "Turn on OAuth so AI tools connect with just the address."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21 (code and production, read only).
+
+With OAuth turned on, ChatGPT, claude.ai and Claude Code connect to `<TB_PUBLIC_URL>/mcp` without a personal token. The person signs in to Izumi in the browser, approves the client on the Izumi consent page, and the client gets an OAuth token that acts as that person. The scope is `read` and, when the person ticks it, `propose`. Izumi is its own authorization server. The steps for each client are in the AI tools tab: [Overview](/en/ai-tools/overview).
+
+## What you need
+
+- A public HTTPS address. `TB_OAUTH=on` needs `TB_PUBLIC_URL` with `https` and no path (for example `https://brain.example.com`) and `TB_MASTER_KEY` (the server's signing and cookie keys are stored encrypted with it).
+- ChatGPT and claude.ai call the server from their own clouds, so the address must be reachable from the internet. Claude Code on the same network as the server needs only that network.
+- An `http` address is allowed only for `localhost` and `127.0.0.1` (tests).
+
+## Three switches
+
+Set them in `.env`, then `docker compose up -d`.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `TB_OAUTH` | `off` | `on` mounts the authorization server (`/oauth/*` and the discovery documents) into the app. |
+| `TB_OAUTH_CIMD` | `on` | Read only with `TB_OAUTH=on`. A client whose `client_id` is an address on `claude.ai` or `chatgpt.com` is recognized by the metadata document at that address (CIMD). `off` for a closed egress. |
+| `TB_OAUTH_DCR` | `on` | Read only with `TB_OAUTH=on`. Dynamic client registration at `/oauth/register`: a client without a CIMD document, or any client when CIMD is off, registers itself. The consent page marks such a client as unverified. |
+
+## What the server calls and when (from the code)
+
+- Only with `TB_OAUTH=on` and `TB_OAUTH_CIMD` on, and only when a client whose `client_id` is an address on `claude.ai` or `chatgpt.com` starts connecting, the server fetches that client's metadata document and the JWKS the document names.
+- No other host is ever called: the two hosts are fixed in the code.
+- The call is `https` only, does not follow redirects, does not go to private addresses, stops after 5 seconds, takes at most 5 KB for the document and 64 KB for the JWKS, and the response is cached for an hour.
+- When the call fails (for example in a closed network), the connection is refused (`invalid_client`). Nothing else is affected.
+- With `TB_OAUTH_CIMD=off` the server calls nobody: claude.ai and Claude Code then connect through DCR (when it is on) or through a pre-registered client.
+- With `TB_OAUTH=off` OAuth does not exist.
+
+## Check that it works
+
+Production has OAuth turned on. These addresses are public and need no sign-in:
+
+```
+curl -s https://brain.example.com/.well-known/oauth-authorization-server
+curl -s https://brain.example.com/.well-known/oauth-protected-resource
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://brain.example.com/mcp
+```
+
+- The first response has `issuer` with your `https` address, `authorization_endpoint`, `registration_endpoint`, `code_challenge_methods_supported` with `S256` and `grant_types_supported` with `authorization_code` and `refresh_token`.
+- The second has `resource` equal to `<TB_PUBLIC_URL>/mcp` and the scopes `read` and `propose`.
+- `POST /mcp` without a token returns 401.
+
+## Turning it off
+
+Set `TB_OAUTH=off` and run `docker compose up -d`. The `/oauth` routes and the discovery documents disappear, and `/mcp` accepts only personal tokens: connected apps stop working right away. Their rows stay on the **My tokens and profile** page: revoke them there if the switch stays off. To keep OAuth but stop every outside call, set `TB_OAUTH_CIMD=off`.
+
+## Key rotation
+
+```
+./tb admin oauth rotate-keys
+docker compose restart app
+```
+
+The command adds a new signing key and a new cookie key. The old cookie key is valid for another 24 hours, and the old signing key stays in the JWKS for another 7 days, so nobody is signed out.
+
+After `TB_MASTER_KEY` changes, the old keys cannot be read. Then:
+
+```
+./tb admin oauth rotate-keys --reset
+docker compose restart app
+```
+
+`--reset` withdraws all old keys at once (consents in progress start over).
+
+## Pre-registered clients
+
+For a client that supports neither CIMD nor DCR, or when both are off, register a public client (PKCE, no secret) and give its `client_id` to the client.
+
+```
+./tb admin oauth client add --label "Team tool" --redirect-uri https://tool.example.com/callback
+./tb admin oauth client list
+./tb admin oauth client remove <client_id>
+```
+
+- `--label` is the name the consent page shows (at most 60 characters).
+- `--redirect-uri` accepts `https`, or `http` on `localhost`, `127.0.0.1` or `[::1]`. Repeat it for more addresses.
+- `client list` also lists clients that registered themselves through DCR.
+
+## Limits
+
+- A shared key for the whole company is not supported: each person connects their own client and approves it with their own sign-in, and the connection reads only what that person reads.
+- (From the install guide, not checked live.) ChatGPT Free, Plus and Pro only read (`whoami`, `search`, `get_document`, `who_knows`). `propose_note` from ChatGPT needs a Business or Enterprise workspace.
+- Approving clients for the whole company through the identity provider's administrator (Enterprise-Managed Authorization) comes later.
+- Entra sign-in itself was checked live on Izumi 0.5.8 (2026-11-21, see [Sign-in](/en/install/sign-in)). Connecting over OAuth as a person who signed in with Microsoft was checked live on Izumi 0.5.9 on 2026-11-21 with Claude Code: the consent page showed the signed-in person's name (a company admin who signed in with Microsoft), and after Approve the token appeared on My tokens and profile as a connected app with `read` and `propose`, and Revoke removed it. Not checked live: claude.ai and ChatGPT as a Microsoft-signed-in person. Try that once with your own app before OAuth is offered to a company with Microsoft 365.
+- A connection lasts 90 days from the last approval, then the client asks for a new connection. A client's refresh token is valid for 30 days: a client that is not used for 30 days has to reconnect earlier (from the code).
+
+## Troubleshooting
+
+| What you see | What to check |
+|---|---|
+| The app does not start with `TB_OAUTH=on`, the log says `TB_OAUTH=on needs an https TB_PUBLIC_URL`, `... without a path`, `... needs TB_PUBLIC_URL` or `... needs TB_MASTER_KEY` (from the code) | `TB_PUBLIC_URL` must be `https` without a path, and `TB_MASTER_KEY` must exist. `TB_OAUTH` must be exactly `on` or `off`. |
+| A client reports `invalid_client` | The CIMD call failed (closed network, or the address is not on `claude.ai` or `chatgpt.com`). Turn on DCR or pre-register the client. |
+| A connected client suddenly asks to connect again | It was not used for 30 days (the refresh token expires) or 90 days have passed since the approval. Also: Every refresh gives the client a new refresh token. If an already used (rotated) refresh token shows up again, the whole connection is cut and the person connects the client again. Or the connection was revoked on the **My tokens and profile** page. |
+| Connecting fails after `TB_MASTER_KEY` was changed | Run `./tb admin oauth rotate-keys --reset` and restart `app`. |
+| A client in a closed network cannot connect | `TB_OAUTH_CIMD=off`, then DCR or a pre-registered client. |

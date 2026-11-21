@@ -1,0 +1,89 @@
+---
+title: "Upgrade"
+description: "How to move to a new version."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21: `./tb upgrade` live on a throwaway stack (Docker Desktop, Mac, arm64), and production by reading.
+
+An upgrade is one command, `./tb upgrade <version>`, which first takes a backup and then changes the version. This page describes the steps, the exit codes and the way back.
+
+## Before the upgrade
+
+- Read the `CHANGELOG.md` of the new release. Every entry says "No migration" or names the migration and how it is reverted. For example, 0.5.3 had one migration (`0036_pending_clips.sql`, only a new function), and most 0.5.x releases have none.
+- Check that `.env` has `TB_BACKUP_KEY`. An upgrade without it stops, because it takes a backup first.
+- A migration can lock a table: plan a window. `app`, `worker` and `backup` are stopped during the upgrade anyway.
+
+## Upgrade
+
+<Steps>
+  <Step title="Put the files of the new release in the directory and build the image">
+    ```
+    docker build -t team-brain:<version> .
+    ```
+  </Step>
+  <Step title="Check TB_BACKUP_KEY">
+    ```
+    grep -c '^TB_BACKUP_KEY=.' .env
+    ```
+
+    It must print 1.
+  </Step>
+  <Step title="Run the upgrade">
+    ```
+    ./tb upgrade <version>
+    ```
+  </Step>
+</Steps>
+
+`./tb upgrade` does, in order:
+
+1. Takes a backup (an error stops the upgrade with exit 4 and changes nothing).
+2. Uses the image if it exists locally, otherwise tries `docker compose pull` (a failure stops with exit 1).
+3. Stops `app`, `worker` and `backup`.
+4. Runs `migrate` with the new image.
+5. Copies the env file to `.env.bak-<old version>` and writes `TB_IMAGE_TAG=<version>`.
+6. Starts `app`, `worker` and `backup`.
+7. Waits for `/readyz` (`TB_READY_WAIT` seconds, default 120).
+
+At the end it prints the old and the new version, the backup file and the applied migrations.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 1 | The image is neither local nor available to pull, or stopping the services or writing the env file failed (from the code). |
+| 2 | The version is not `MAJOR.MINOR.PATCH`, or it is the version that already runs, or the previous upgrade failed and the way back is not finished. |
+| 4 | The backup did not succeed. Nothing was changed. |
+| 5 | `migrate` failed. `app`, `worker` and `backup` stay stopped, because the schema may be half migrated and no version may run on it (and the nightly backup of such a database would sit next to a clean one). |
+| 6 | The new version did not become ready within `TB_READY_WAIT` seconds, or `app` and `worker` did not start. |
+
+## The way back after a failure
+
+After exit 5 or 6 (and after an error writing the env file) `./tb upgrade` prints the way back with your paths. Run the lines as printed, except that you add `sudo` to the last one (the printed line does not have it):
+
+```
+cp .env.bak-<old version> .env          # only after exit 6
+docker compose -p team-brain --env-file .env down
+docker volume rm team-brain_db-data
+sudo TB_COMPOSE_PROJECT=team-brain TB_ENV_FILE=.env ./tb restore <backup file>
+```
+
+- You add `sudo` yourself: the backup folders belong to root, and without root `./tb restore` does not see the file and says it does not exist (`tb: restore: no such file`). The printed line starts with `TB_COMPOSE_PROJECT=...`. Keep it whole and put `sudo` in front of it, because `sudo` drops the variables of your shell.
+- Until the restore is finished, `./tb upgrade` refuses to run (exit 2) and prints the same lines, because a new backup would hold a half-migrated database. It records this in `.env.upgrade-failed`.
+- If after exit 6 the new version became ready later after all and you keep it, delete `.env.upgrade-failed`.
+- Restore details: [Backup and restore](/en/install/backup).
+
+## Limits
+
+- An upgrade stops the service for the time of the migration.
+- `./tb upgrade` does not build the new image: you build it (or `docker compose pull` fetches it if it exists in a registry).
+- The way back is a restore from a backup, not a reverse migration.
+
+## Troubleshooting
+
+| What you see | What to check |
+|---|---|
+| Exit 4 | `TB_BACKUP_KEY` is missing or taking the copy failed: `./tb backup` shows the reason. |
+| Exit 2 and a printed way back | The previous upgrade failed: finish the restore as above. |
+| Exit 6 | `docker compose logs app worker embedder`. The embedder may still be loading the model. |
+| `./tb upgrade` says the stack already runs that version | `./tb --version`. |

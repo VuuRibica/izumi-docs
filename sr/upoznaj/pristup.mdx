@@ -1,0 +1,53 @@
+---
+title: "Kako radi pristup"
+description: "Ko šta vidi u Izumi i zašto."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21.
+
+Pristup u Izumiju stoji na tri pojma: firma, domen i uloga. Ista pravila važe za vas i za svaki AI alat koji povežete.
+
+## Firma, domen i uloga
+
+- Firma je granica podataka. Dokumente, izvore i zapise o pristupu druga firma ne vidi.
+- Unutar firme su domeni, oblasti znanja kao što su Finansije ili Kadrovska.
+- Uloga vezuje osobu za jedan domen. Član vidi samo dokumente iz domena u kojima ima ulogu.
+
+| Uloga | Šta radi |
+|---|---|
+| **Čitalac** | Čita i pretražuje dokumente domena. |
+| **Urednik** | Isto što i čitalac, šalje web clip isečke u domen i odobrava ili odbija predložene beleške tog domena. |
+| **Admin firme** | Upravlja članovima, domenima, izvorima i podešavanjima. Nije automatski urednik nijednog domena. |
+
+## AI alat ima vaša prava, ne više
+
+- Povezan AI alat vidi samo ono što vi smete da vidite, u svim vašim firmama.
+- Kod povezivanja preko OAuth-a čitanje je uvek uključeno. Predlaganje beleški je opciono i možete ga isključiti pri povezivanju. Lični token možete da suzite na neke firme i domene.
+- Veza traje najviše 90 dana. Opozivate je sami na ekranu **Moji tokeni i profil**.
+
+## Kako se ulazi
+
+- Samo uz pozivnicu. Prvu pravi operator servera, sve ostale admin firme. Link važi 72 sata i može se iskoristiti jednom.
+- Izumi ne šalje mejl (iz koda). Link šalje admin, kanalom kojem veruje.
+- Nema lozinki: prijava je Google ili Microsoft nalogom. Oba su provereni uživo na Izumiju 0.5.8: Google, i Microsoft radnim nalogom na probnom tenantu.
+
+## Ko odlučuje o predlozima
+
+- Odlučuje urednik domena na koji se predlog odnosi, u **Red za pregled**.
+- Admin firme koji nije urednik ne vidi predloge tog domena. Svaki domen treba bar jednog urednika, inače predlozi čekaju dok ne isteknu.
+
+## Ko je šta pitao
+
+- **Log pristupa** beleži svaki poziv: iz veba, iz AI alata, iz web clip proširenja i kroz push API. Admin vidi sve u firmi, član samo svoje.
+- Naslov dokumenta u logu vidi samo ko sme da ga čita. Za ostale piše samo broj.
+- Koliko dugo se zapisi čuvaju podešava firma, podrazumevano 365 dana.
+
+## Ograničenja
+
+- Ono što ne smete da vidite ne dolazi ni u rezultate ni u broj rezultata.
+
+## Dalje
+
+- Za admina: [Kompanije, domeni, uloge](/sr/admin/kompanije-domeni-uloge), [Korisnici i pozivnice](/sr/admin/korisnici), [Pregled predloga](/sr/admin/pregled-predloga) i [Log pristupa](/sr/admin/log-pristupa).
+- Za korisnika: [Predlozi i pregled](/sr/koriscenje/predlozi), [Moji tokeni i log](/sr/koriscenje/tokeni-i-log) i [Pregled AI alata](/sr/ai-alati/pregled).
+- Kako se podešava prijava: [Prijava (Google, Entra)](/sr/instalacija/prijava).

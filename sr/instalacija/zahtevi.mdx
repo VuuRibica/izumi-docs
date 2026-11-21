@@ -1,0 +1,61 @@
+---
+title: "Zahtevi"
+description: "Šta vam treba pre instalacije."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21: instalacija uživo na probnom steku (Docker Desktop, Mac, arm64), a zahtevi i produkcija (Docker, verzije slika, disk) iz koda i čitanjem.
+
+Ova kartica je za osobu koja instalira Izumi na server svoje firme: Docker, mreža, TLS, prijava i konektori. Komande su dozvoljene. Ljudi koji samo rade u Izumiju ovde ne moraju ništa da čitaju.
+
+## Šta se instalira
+
+Izumi je jedan `docker compose` projekat. Slika aplikacije se pravi na vašem serveru, registar ne postoji.
+
+| Servis | Šta radi |
+|---|---|
+| `db` | PostgreSQL 18 sa pgvector (`pgvector/pgvector:0.8.7-pg18-bookworm`). Drži sve podatke. Pristup se sprovodi u bazi (row level security). |
+| `migrate` | Primeni migracije baze i izađe. Radi pre `app` i `worker`. |
+| `app` | REST API, MCP adresa `/mcp` i web aplikacija, na portu 8080 u kontejneru. |
+| `worker` | Uvoz (upload, Drive i SharePoint), istek predloga, brisanje starih zapisa o pristupu, ponovno embedovanje pri promeni modela i čišćenje isteklih OAuth podataka. |
+| `embedder` | Text Embeddings Inference sa modelom `BAAI/bge-m3` (1024 dimenzije). |
+| `backup` | Noćni šifrovani backup. |
+| `caddy` | Neobavezno (profil `proxy`): TLS ispred `app`. Vidi [TLS](/sr/instalacija/tls). |
+
+- `app`, `worker` i `migrate` koriste istu sliku `team-brain:<verzija>`. Oznaka slike je verzija.
+- Slika i repozitorijum se i dalje zovu `team-brain`, iako se proizvod zove Izumi. Komande se pokreću skriptom `./tb`.
+
+## Ko vodi instalaciju
+
+- Akia vodi deljenu i posvećenu instalaciju (jedna instanca za više firmi, ili jedna instanca po klijentu).
+- Ova kartica opisuje instalaciju koju vodi sama firma, na svom serveru ili u svom oblaku. Paket i vodič su isti u sva tri slučaja.
+
+## Hardver
+
+- Referentni server: VPS sa 4 vCPU i 8 GB RAM, Linux na `amd64`.
+- Embedder je najveći proces. U `docker-compose.yml` ostaje `--max-batch-tokens 512`: veće serije ubije sistem zbog memorije već pri startu na 8 GB.
+- Cilj je najviše 3 GB za embedder. Na Mac računaru (arm64 slika u Docker Desktop) embedder je u ranijoj probi dostigao 4,80 GB, a u probi 2026-11-21 je u mirovanju posle starta držao 3,6 GiB, pa ostavite rezervu i ne pokrećite druge velike servise na istom serveru.
+- Disk: slika `team-brain` oko 0,5 GB, slika baze 0,7 GB, slika embeddera oko 0,5 GB, model bge-m3 2,2 GB u volumenu modela, a za pravljenje slike treba još oko 2 GB keša. Planirajte bar 40 GB za malu instalaciju.
+- Baza i backup rastu sa brojem delova teksta (chunk). Čuva se 14 dnevnih i 6 mesečnih kopija. Pilot korpus (43 dokumenta, 209 delova) daje backup od 1,1 MB.
+- Produkcija Izumija radi na serveru sa 75 GB diska, od kojeg je 26 GB zauzeto (provereno čitanjem).
+
+## Preduslovi
+
+- Linux na `amd64` sa Docker Engine i Docker Compose dodatkom (`docker compose`, verzija 2).
+- Korisnik koji vodi instalaciju je u grupi `docker`, da `docker` i `./tb` rade bez `sudo`. Samo čitanje backup fajlova traži root.
+- `openssl` (ključevi i lozinke), `curl` (provere spremnosti) i `git`.
+- DNS ime servera, na primer `brain.example.com`, i otvoreni portovi 80 i 443 (443 i za UDP) ako koristite TLS sa `proxy` profilom.
+- Internet tokom instalacije: pravljenje slike preuzima Node sliku i npm pakete, a prvi start embeddera preuzima model sa `huggingface.co`. Za server bez interneta vidi [Rad bez interneta](/sr/instalacija/bez-interneta).
+
+## Ograničenja
+
+- Referentno merenje (RAM embeddera i p95 pretrage) na VPS-u sa 8 GB još nije urađeno.
+- Instalacija je predviđena za `amd64` (na Linux serveru nije proveravana uživo). ARM (Apple Silicon) služi za probu na računaru, ne za server.
+- Većina podešavanja je u fajlu `.env`: vidi [Instalacija](/sr/instalacija/instalacija).
+
+## Rešavanje problema
+
+| Šta vidite | Verovatan uzrok |
+|---|---|
+| Embedder se ubije pri startu | Memorija: proverite da je `--max-batch-tokens 512` i da server ima bar 8 GB. |
+| Pravljenje slike pada | Nema interneta ili disk je pun (treba oko 2 GB za keš). |
+| `docker` traži `sudo` | Korisnik nije u grupi `docker`. |

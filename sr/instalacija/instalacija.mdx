@@ -1,0 +1,154 @@
+---
+title: "Instalacija"
+description: "Instalirajte Izumi na svoj server."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21: uživo na probnom steku (novi, prazan Docker stek na Mac računaru, arm64, Docker Desktop sa 8 GB, adresa `http://localhost:18080`), a promenljive i imena servisa i prema kodu i produkciji (samo čitanje, bez vrednosti).
+
+Sve komande rade u instalacionom direktorijumu osim ako korak kaže drugačije. Pre početka proverite [Zahteve](/sr/instalacija/zahtevi).
+
+## Fajlovi i slika
+
+Stavite izdanje u direktorijum koji se zove `team-brain`, na primer `/opt/team-brain`. Compose projekat se tada zove `team-brain`, i za `docker compose` (polje `name:` u `docker-compose.yml`) i za `./tb` (ime direktorijuma). Ako koristite drugo ime direktorijuma, u ljusci koja pokreće `./tb` postavite `TB_COMPOSE_PROJECT=team-brain`.
+
+```
+cd /opt/team-brain
+docker build -t team-brain:0.5.7 .
+```
+
+## Fajl .env
+
+Celo podešavanje je u fajlu `.env` u instalacionom direktorijumu. Čitaju ga i `docker compose` i `./tb`. Nikad ga ne stavljajte u git i nikad u folder sa backupom.
+
+<Steps>
+  <Step title="Napravite fajl">
+    ```
+    cp .env.example .env
+    chmod 600 .env
+    ```
+  </Step>
+  <Step title="Generišite tajne direktno u fajl">
+    Tako se nijedna tajna ne ispisuje na ekranu ni u istoriji terminala.
+
+    ```
+    set_env() { sed -i "s|^$1=.*|$1=$2|" .env; }
+    set_role() { p=$(openssl rand -hex 16); set_env "$1" "$p"; sed -i "s|^\($2=postgres://[^:]*:\)CHANGE_ME@|\1$p@|" .env; unset p; }
+    set_env TB_MASTER_KEY "$(openssl rand -base64 32)"
+    set_env TB_BACKUP_KEY "$(openssl rand -base64 32)"
+    set_env TB_METRICS_TOKEN "$(openssl rand -base64 32)"   # neobavezno
+    set_env POSTGRES_PASSWORD "$(openssl rand -hex 16)"
+    set_role TB_OWNER_PASSWORD DATABASE_URL_OWNER
+    set_role TB_APP_PASSWORD DATABASE_URL_APP
+    set_role TB_WORKER_PASSWORD DATABASE_URL_WORKER
+    set_role TB_MAINT_PASSWORD DATABASE_URL_MAINT
+    grep -c CHANGE_ME .env    # 0: svaki DATABASE_URL ima lozinku
+    ```
+
+    `set_role` upisuje jednu lozinku u svoj red `TB_*_PASSWORD` i u `CHANGE_ME` odgovarajućeg `DATABASE_URL_*`. Base64 i hex vrednosti nemaju `|` ni `&`, pa ih `sed` uzima kakve jesu.
+  </Step>
+  <Step title="Postavite adresu i verziju">
+    U `.env` postavite `TB_PUBLIC_URL` (adresa koju ljudi otvaraju, na primer `https://brain.example.com`, mora biti `https` osim za `localhost`, `127.0.0.1` i `[::1]`), `TB_PUBLIC_HOST` (isti host) i `TB_IMAGE_TAG=0.5.7` (fajl `.env.example` izdanja 0.5.7 ima `TB_IMAGE_TAG=0.4.0`, pa ovu vrednost uvek postavite). Za HTTPS ispred aplikacije vidi [TLS](/sr/instalacija/tls).
+  </Step>
+</Steps>
+
+- Vrednosti pišite bez navodnika.
+- Lozinke uloga baze se postave jednom, pri prvom startu prazne baze. Kasnija promena `TB_*_PASSWORD` ne menja ulogu.
+- `TB_MASTER_KEY` nikad nije u backupu. Sačuvajte kopiju `TB_MASTER_KEY` i `TB_BACKUP_KEY` van servera, vidi [Backup i restore](/sr/instalacija/backup).
+
+<Accordion title="Sve promenljive">
+
+"Obavezno: da" znači da stek ne startuje bez nje. "Podesite" znači da startuje, ali ne onako kako želite. Prazno znači podrazumevanu vrednost.
+
+| Promenljiva | Obavezno | Značenje |
+|---|---|---|
+| `TB_IMAGE` | ne | Ime slike bez oznake (podrazumevano `team-brain`). |
+| `TB_IMAGE_TAG` | podesite | Verzija koju stek pokreće, na primer `0.5.7`. `./tb upgrade` je prepisuje. Prazno: compose koristi oznaku `local` i gradi novu sliku iz direktorijuma umesto da pokrene vašu. |
+| `TB_PUBLIC_URL` | da | Adresa koju ljudi otvaraju. Mora biti `https` osim za `localhost`, `127.0.0.1` i `[::1]`. |
+| `TB_PUBLIC_HOST` | da | Host iz `TB_PUBLIC_URL`, tačno kako ga klijenti šalju u Host zaglavlju (sa `:port` kad port nije 80 ili 443). Ujedno je lista dozvoljenih imena za `/mcp` i ime za koje Caddy traži sertifikat. |
+| `TB_HTTP_PORT` | ne | Port aplikacije na serveru (podrazumevano `8080`, na svim interfejsima). Sa proksijem postavite `127.0.0.1:8080`. |
+| `TB_TRUSTED_PROXIES` | ne | Tačne adrese ili CIDR proksija čiji `X-Forwarded-For` aplikacija uvažava. Prazno ne veruje nikome. Sa `proxy` profilom: vrednost `TB_PROXY_IP`. Nikad celu podmrežu, nikad `/0`. |
+| `TB_NET_SUBNET` | ne | Podmreža compose mreže (podrazumevano `172.29.88.0/24`). |
+| `TB_PROXY_IP` | ne | Fiksna adresa Caddy kontejnera (podrazumevano `172.29.88.10`), unutar `TB_NET_SUBNET`. |
+| `TB_MASTER_KEY` | da | 32 slučajna bajta, base64. Obmotava ključeve firmi kojima se šifruju sačuvane tajne (na primer podaci konektora). Nikad u backupu. |
+| `POSTGRES_PASSWORD` | da | Superkorisnik baze. Ostaje unutar kontejnera `db` i `backup`. |
+| `TB_OWNER_PASSWORD`, `TB_APP_PASSWORD`, `TB_WORKER_PASSWORD`, `TB_MAINT_PASSWORD` | da | Lozinke uloga `tb_owner`, `tb_app`, `tb_worker` i `tb_maint`, postavljene pri prvom startu. |
+| `DATABASE_URL_OWNER` | da | `tb_owner`: samo migracije i operatorska komanda. |
+| `DATABASE_URL_APP` | da | `tb_app`: aplikacija. |
+| `DATABASE_URL_WORKER` | da | `tb_worker`: worker. |
+| `DATABASE_URL_MAINT` | da | `tb_maint`: brisanje starih zapisa o pristupu u workeru. |
+| `TB_OIDC_GOOGLE_CLIENT_ID`, `TB_OIDC_GOOGLE_CLIENT_SECRET` | ne | Prijava Google nalogom. Oba ili nijedan. Vidi [Prijava](/sr/instalacija/prijava). |
+| `TB_OIDC_ENTRA_CLIENT_ID`, `TB_OIDC_ENTRA_CLIENT_SECRET` | ne | Prijava Microsoft (Entra ID) nalogom. Oba ili nijedan. |
+| `TB_OIDC_ENTRA_TENANT` | ne | `organizations` (podrazumevano) ili GUID jednog tenanta. |
+| `TB_OAUTH` | ne | `off` (podrazumevano) ili `on`: MCP klijenti se povezuju preko OAuth-a. Vidi [OAuth](/sr/instalacija/oauth). |
+| `TB_OAUTH_CIMD`, `TB_OAUTH_DCR` | ne | Čitaju se samo uz `TB_OAUTH=on`, svaka `on` (podrazumevano) ili `off`. |
+| `TB_GDRIVE_CLIENT_ID`, `TB_GDRIVE_CLIENT_SECRET` | ne | OAuth klijent instalacije za Google Drive. Oba ili nijedan. Vidi [Konektori](/sr/instalacija/konektori). |
+| `TB_EMBED_PROVIDER` | ne (podrazumevano `tei`) | `tei` (lokalni embedder) ili `openai`. |
+| `TB_EMBED_URL` | ne (podrazumevano `http://embedder:80`) | Adresa embeddera uz `tei`. |
+| `TB_EMBED_MODEL` | ne (podrazumevano `BAAI/bge-m3`) | Aktivni model. Servis embedder učitava isti model. |
+| `TB_EMBED_IMAGE` | ne | Slika embeddera: `ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4` na amd64 (podrazumevano), `cpu-arm64-1.9.4` na Apple Silicon. |
+| `TB_OPENAI_API_KEY` | uz `openai` | OpenAI ključ. Samo kad je neki provajder `openai`. |
+| `TB_EMBED_NEXT_PROVIDER`, `TB_EMBED_NEXT_URL`, `TB_EMBED_NEXT_MODEL` | ne | Embedder sledećeg modela tokom promene modela, sve tri ili nijedna. |
+| `TB_METRICS_TOKEN` | ne | Bearer token za `GET /metrics`. Prazno: `/metrics` odgovara 404. |
+| `TB_SSE_HEARTBEAT_MS`, `TB_SSE_MAX_MS` | ne | Živi tok mape znanja: ping na 15 s, tok se završava posle 15 minuta i pregledač se ponovo povezuje. |
+| `TB_BACKUP_DIR` | ne | Gde idu backupi (podrazumevano `./backups`, sa `daily/` i `monthly/`). |
+| `TB_BACKUP_KEY` | da za backup | 32 slučajna bajta, base64. Šifruje backupe. Dobija ga samo servis backup. `./tb backup` i `./tb upgrade` bez njega padaju. |
+| `TB_BACKUP_REMOTE` | ne | Direktorijum na serveru koji vi montirate (na primer NFS ili rclone). Svaki backup se kopira tamo i rotira isto. |
+| `TB_BACKUP_HOUR` | ne | Sat noćnog backupa (podrazumevano `2`). |
+| `TZ` | ne | Vremenska zona za sat backupa (podrazumevano `Europe/Belgrade`). |
+| `TB_PROPOSAL_EXPIRY_MS` | ne | Koliko često worker poništava istekle predloge (podrazumevano jedan sat). |
+| `TB_AUDIT_PURGE_MS` | ne | Koliko često worker briše zapise o pristupu stariji od roka čuvanja (podrazumevano jedan dan). |
+| `TB_RETENTION_MIN_DAYS`, `TB_RETENTION_MAX_DAYS` | ne | Sužavaju raspon dana za rok čuvanja (podrazumevano 30 i 3650). |
+| `TB_LOG_LEVEL` | ne | `trace`, `debug`, `info` (podrazumevano), `warn` ili `error`. |
+
+Tabela pokriva promenljive iz `.env.example`. Compose čita još `TB_NODE_IMAGE` (osnovna Node slika pri pravljenju), `TB_DB_IMAGE` (slika servisa `backup`) i `TB_EMBED_HOST_PORT` (lokalni port embeddera, podrazumevano 58080). Opcioni reranker (`TB_RERANK_*`) je isključen i ovde nije opisan.
+
+U ljusci, ne u `.env`, postavljate: `TB_COMPOSE_PROJECT` (compose projekat za `./tb`, podrazumevano ime direktorijuma), `TB_ENV_FILE` (env fajl za `./tb`, podrazumevano `.env`) i `TB_READY_WAIT` (koliko sekundi `./tb restore` i `./tb upgrade` čekaju `/readyz`, podrazumevano 120). Red `COMPOSE_PROFILES=proxy` u `.env` drži proksi u svakom `docker compose up -d` (vidi [TLS](/sr/instalacija/tls)).
+
+</Accordion>
+
+## Prvi start
+
+<Steps>
+  <Step title="Pokrenite stek">
+    ```
+    docker compose up -d
+    docker compose ps
+    curl -s http://127.0.0.1:8080/readyz
+    ```
+
+    `docker compose up -d` pokreće `db`, izvrši `migrate`, pa pokreće `app`, `worker`, `embedder` i `backup`. Uz proksi dodajte `--profile proxy`. Pri prvom startu embedder preuzima model bge-m3 (oko 2,2 GB) sa `huggingface.co` u volumen modela, što traje nekoliko minuta.
+  </Step>
+  <Step title="Sačekajte spremnost">
+    `/readyz` odgovara 503 dok baza, šema, embedder i otkucaj workera nisu u redu, pa 200 sa `"ok":true`. Telo odgovora ima `checks` za `db`, `schema`, `embedder` i `worker`. Na produkciji izgleda ovako:
+
+    ```
+    {"ok":true,"checks":{"db":true,"schema":true,"embedder":true,"worker":true}}
+    ```
+  </Step>
+  <Step title="Proverite verziju i stanje">
+    ```
+    ./tb status
+    ./tb --version
+    ```
+
+    `./tb status` prikazuje kontejnere, spremnost (`readyz: ready`), aktivni model embeddera i starost poslednjeg backupa. `./tb --version` ispisuje oznaku slike koju stek pokreće.
+  </Step>
+</Steps>
+
+Sledeći korak je [prvi administrator](/sr/instalacija/prvi-admin).
+
+## Ograničenja
+
+- Komande za generisanje `.env` koriste GNU `sed -i` (Linux). Na macOS-u `sed` traži `sed -i ''`.
+- Promena `TB_*_PASSWORD` posle prvog starta ne menja lozinku uloge u bazi: uloge je dobijaju samo pri prvom startu prazne baze.
+- Bez `TB_IMAGE_TAG` compose koristi oznaku `local` i gradi sliku iz direktorijuma. Zato je `TB_IMAGE_TAG` u tabeli označen sa "podesite".
+- Embedder čeka internet pri prvom startu. Bez interneta vidi [Rad bez interneta](/sr/instalacija/bez-interneta).
+
+## Rešavanje problema
+
+| Šta vidite | Šta proveriti |
+|---|---|
+| `/readyz` stalno 503 | Telo odgovora kaže koji `checks` je `false`. `docker compose ps` i `docker compose logs app worker embedder`. Model se još preuzima prvih minuta. |
+| `/readyz` 503 i `embedder_model_mismatch` | Aplikacija nema embedder za aktivni model: proverite `TB_EMBED_MODEL` i `TB_EMBED_URL`. |
+| Aplikacija odmah staje | Provera `.env`: ID bez tajne (ili obrnuto) za Google prijavu, Entra prijavu ili Google Drive klijent zaustavlja aplikaciju pri startu. `grep -c CHANGE_ME .env` mora dati 0. |
+| `./tb` kaže `env file .env not found` | Pokrenite ga u instalacionom direktorijumu ili postavite `TB_ENV_FILE`. |

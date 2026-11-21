@@ -1,0 +1,72 @@
+---
+title: "TLS"
+description: "Certificate and HTTPS."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21 (code and production, read only).
+
+Izumi needs an HTTPS address. The `proxy` profile puts Caddy in front of the app: it gets a certificate for `TB_PUBLIC_HOST` from a public certificate authority (Let's Encrypt by default) and passes traffic on to the app.
+
+## Set up TLS
+
+<Steps>
+  <Step title="Point a DNS name at the server">
+    Create an A record for the server name (an explicit record wins over a wildcard record in the zone). Open ports 80 and 443. If the domain has CAA records, one of them must allow `letsencrypt.org`.
+  </Step>
+  <Step title="Set the values in .env">
+    ```
+    TB_PUBLIC_URL=https://brain.example.com
+    TB_PUBLIC_HOST=brain.example.com
+    TB_TRUSTED_PROXIES=172.29.88.10
+    TB_HTTP_PORT=127.0.0.1:8080
+    ```
+
+    `172.29.88.10` is the value of `TB_PROXY_IP` (the default address of the Caddy container).
+  </Step>
+  <Step title="Start with the profile">
+    ```
+    docker compose --profile proxy up -d
+    ```
+
+    To keep the proxy in every later `docker compose up -d`, add the line `COMPOSE_PROFILES=proxy` to `.env`.
+  </Step>
+</Steps>
+
+## Why these values
+
+- `TB_HTTP_PORT=127.0.0.1:8080`: Docker publishes ports around the server firewall (`ufw` rules do not stop them), and the app port must not be reachable from outside next to Caddy.
+- Only the Caddy address in `TB_TRUSTED_PROXIES`: the subnet also contains the Docker gateway, so a client that reaches the app port directly could forge `X-Forwarded-For` and get around the per-address sign-in limit. Never the whole subnet, never `/0`.
+- Without a proxy leave `TB_TRUSTED_PROXIES` empty.
+- Caddy passes the Host header on unchanged, so the name check for `/mcp` sees `TB_PUBLIC_HOST`.
+
+## Your own proxy instead of Caddy
+
+Behind your own proxy put that proxy's address in `TB_TRUSTED_PROXIES`. The Host header must arrive unchanged, because the name check for `/mcp` reads `TB_PUBLIC_HOST`. This way has not been checked live.
+
+## Check
+
+```
+curl -sI https://brain.example.com/ | head -5
+curl -sI http://brain.example.com/ | head -3
+echo | openssl s_client -connect brain.example.com:443 -servername brain.example.com 2>/dev/null | openssl x509 -noout -issuer -dates
+```
+
+This result was verified on Izumi production (2026-11-21):
+
+- HTTP returns 308 to the `https` address.
+- The response has `strict-transport-security: max-age=31536000; includeSubDomains` and the header `via: 1.1 Caddy`.
+- The certificate issuer is Let's Encrypt. The production certificate was issued on 2026-11-17, so a renewal (which Caddy does by itself) has not been observed.
+
+## Limits
+
+- Caddy has to reach the certificate authority (Let's Encrypt) to get and renew a certificate. Without internet Caddy cannot get a certificate: put your own proxy with your own certificate in front of the app (this way has not been checked live, see above), and for the rest see [Running offline](/en/install/offline).
+- Old server names can be redirected to `TB_PUBLIC_HOST`: every `*.caddy` file in `deploy/redirects/` is imported. Release 0.5.8 no longer ships any such file, only `deploy/redirects/README.md` with an example. You add the `*.caddy` files yourself: they are not tracked by git and a release neither deletes nor overwrites them. The old name must point at this server in DNS, because Caddy gets a certificate for it too.
+
+## Troubleshooting
+
+| What you see | What to check |
+|---|---|
+| Caddy does not get a certificate | The A record points at the server, ports 80 and 443 are open, a CAA record allows `letsencrypt.org`. `docker compose logs caddy`. |
+| The app is also reachable at `http://server:8080` from outside | `TB_HTTP_PORT` is not `127.0.0.1:8080`. |
+| The per-address sign-in limit always sees the same address | `TB_TRUSTED_PROXIES` is not the proxy address (Caddy: the value of `TB_PROXY_IP`). |
+| `/mcp` rejects requests | `TB_PUBLIC_HOST` is not exactly the host as clients send it (with `:port` when the port is not 80 or 443). |

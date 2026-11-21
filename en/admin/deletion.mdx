@@ -1,0 +1,82 @@
+---
+title: "Deletion and retention"
+description: "What is deleted, when and how."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21.
+
+This page says what is deleted when you remove something, what stays and how long records are kept. Every rule has a source: we checked it live, or it is from the code or from the product's install guide.
+
+## What is deleted when...
+
+| Action | What is deleted | What stays | Source |
+|---|---|---|---|
+| You delete a source (**Delete source**) | The source and all documents it imported, with the text and the search index. It cannot be undone. | Files in the outside system (Drive, SharePoint). Rows in the access log. | Live (Drive, Upload, Push, Web clip, SharePoint) |
+| A file disappears from the outside source | The document is removed at the next import (outcome **Removed** in the **Import report**). | The log entry. | From the code |
+| You change the import rules so that a file is no longer included | The document is removed at the next import. The confirmation **Save the rules?** tells you in advance how many documents are removed. | The file in the outside system. | Live (confirmation), from the code (removal) |
+| You remove a member (**Remove**) | The membership in the company and all their roles. | The person's account and all documents they added. | From the dialog text and the install guide |
+| You revoke a token (**Revoke**) | The token stops working at once. | The log entries about its use. | Live |
+| You revoke an invitation (**Revoke**) | The invitation is canceled. | Nothing else. | Live |
+| You archive a domain (**Archive**) | Nothing at once. At a later import of a Drive or Microsoft source the domain's documents are removed. Roles in the domain no longer give access. | Roles (without access) and other documents. | From the code |
+| You approve a proposal | Nothing. The note is created. | The proposal with the status **Approved**. | Live |
+| A proposal expires (30 days) | Nothing. The status becomes **Expired**. | The proposal, with no note text in search. | From the code |
+| You delete a document pushed through the API (`DELETE`) | That document. Only the owner of the id, while they are an editor of the domain. | Other documents of the Push source. | From the push API guide, not checked live |
+
+## What you cannot delete from the web page
+
+- A single document. The **Documents** list and the document page have no delete. You remove a document by deleting the source, from the source, or through the push API.
+- A single web clip. The whole **Web clip** source is deleted, and then all clips of the company disappear.
+- An approved note. Only the whole notes source can be deleted, and then all approved notes of the company disappear (from the code).
+- A company and a person's account. The server operator does that, see below.
+
+<Warning>
+The notes source and the **Web clip** source have the same command **Delete source** as the other sources, but deleting them removes all approved notes, or all clips, of the company. Be sure before you click **Delete**.
+</Warning>
+
+## Deleting a source
+
+<Steps>
+  <Step title="Open the source menu">
+    On the source card open the three-dot menu and choose **Delete source**. The steps with screenshots are on the page [Source: Google Drive](/en/admin/sources-drive).
+  </Step>
+  <Step title="Confirm">
+    The dialog **Delete the source?** says: _"The source "…" and all the documents it imported (N documents) will be removed from Izumi. This cannot be undone."_ Click **Delete**. The message is _"The source was deleted."_
+  </Step>
+  <Step title="Look at the log">
+    For every removed document the [Access log](/en/admin/access-log) gets a row `doc.removed` (in the **Action** filter: Document removed) (from the code). The title and the path are not shown in the log on the web.
+  </Step>
+</Steps>
+
+Deleting is refused while an import of the source is running (from the code). Wait for the import to end and repeat.
+
+## How long records are kept
+
+- The **Access log** is kept per company: 365 days by default, at least 30 and at most 3650. The admin changes the period in **Audit retention (days)** (see [Companies, domains, roles](/en/admin/companies-domains-roles)).
+- The worker deletes entries older than the period once a day (from the install guide). Entries of a deleted company or person stay until their period ends.
+- The worker sets the status **Expired** on proposals older than 30 days, checking once an hour (from the code).
+- Izumi does not delete documents by age. The code has only the cleanup of access log entries and of expired data for connecting AI tools (from the code).
+
+## Deletion done by the operator
+
+The server operator (not the company admin) runs these commands from the install guide. We describe them because a client may ask for them.
+
+- Deleting a person (a GDPR request). It deletes the person's account and access data: linked accounts, tokens, sessions, memberships, roles and profiles. Everything that entered the knowledge base stays the property of the company, and where the person is named, the name becomes "Bivši član" (Serbian for "former member"). The deletion is refused while an import is running, so it is repeated after the import.
+- Deleting a company. First the company key is deleted, then all rows of the company: documents, text chunks, sources, secrets, proposals, profiles, memberships, roles and jobs. Access log entries stay until their period ends.
+- Removing a member from one company is done by the company admin on **Companies and members**, and by the operator with a command. It ends only the membership and the roles.
+- Revoking a token can also be done by the operator.
+
+The exact commands are in the install guide of the product and are not part of this page.
+
+## Limits
+
+- Deleting a source cannot be undone.
+- A document deleted with its source comes back only with a new import or a new upload, if the source exists again.
+- Files in Drive and SharePoint are never changed or deleted (from the code: Izumi asks only for read permissions).
+
+## Troubleshooting
+
+- _"Not possible now: a sync or dry run of this source is queued or running, or the source is paused."_ Wait for the job to end, then repeat the deletion.
+- A document disappeared although you did not delete it. The source no longer has it, or the import rules no longer include it. Look at the outcome **Removed** in the **Import report**.
+- A document is still visible after deleting the source. Refresh the list. If it is still there, the document belongs to another source.
+- An old log entry is gone. The period from **Audit retention (days)** has passed.
+- A person asks for deletion of all their data. That is a request for the server operator, not for the web page.

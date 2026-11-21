@@ -1,0 +1,249 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Izumi",
+  "colors": {
+    "primary": "#ff6b35",
+    "light": "#ff6b35",
+    "dark": "#0b0c0e"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://izumi.akiaconsulting.com"
+  },
+  "navigation": {
+    "versions": [
+      {
+        "version": "Srpski",
+        "default": true,
+        "tabs": [
+          {
+            "tab": "Upoznaj Izumi",
+            "groups": [
+              {
+                "group": "Počnite ovde",
+                "pages": [
+                  "sr/upoznaj/sta-je-izumi",
+                  "sr/upoznaj/pristup",
+                  "sr/upoznaj/bezbednost",
+                  "sr/upoznaj/brzi-start"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Korišćenje",
+            "groups": [
+              {
+                "group": "Svakodnevni rad",
+                "pages": [
+                  "sr/koriscenje/pretraga",
+                  "sr/koriscenje/dokumenti",
+                  "sr/koriscenje/struktura-i-zdravlje",
+                  "sr/koriscenje/ko-zna",
+                  "sr/koriscenje/predlozi",
+                  "sr/koriscenje/web-clip",
+                  "sr/koriscenje/tokeni-i-log",
+                  "sr/koriscenje/problemi"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "AI alati (MCP)",
+            "groups": [
+              {
+                "group": "Povezivanje",
+                "pages": [
+                  "sr/ai-alati/pregled",
+                  "sr/ai-alati/chatgpt",
+                  "sr/ai-alati/claude",
+                  "sr/ai-alati/slack",
+                  "sr/ai-alati/claude-code",
+                  "sr/ai-alati/ostali-klijenti",
+                  "sr/ai-alati/alati"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Administracija",
+            "groups": [
+              {
+                "group": "Upravljanje",
+                "pages": [
+                  "sr/admin/korisnici",
+                  "sr/admin/kompanije-domeni-uloge",
+                  "sr/admin/izvori-drive",
+                  "sr/admin/izvori-microsoft",
+                  "sr/admin/izvori-upload",
+                  "sr/admin/push-api",
+                  "sr/admin/pregled-predloga",
+                  "sr/admin/log-pristupa",
+                  "sr/admin/brisanje"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Instalacija",
+            "groups": [
+              {
+                "group": "Postavljanje",
+                "pages": [
+                  "sr/instalacija/zahtevi",
+                  "sr/instalacija/instalacija",
+                  "sr/instalacija/prvi-admin",
+                  "sr/instalacija/prijava",
+                  "sr/instalacija/konektori",
+                  "sr/instalacija/oauth",
+                  "sr/instalacija/tls",
+                  "sr/instalacija/backup",
+                  "sr/instalacija/nadogradnja",
+                  "sr/instalacija/monitoring",
+                  "sr/instalacija/bez-interneta"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "version": "English",
+        "tabs": [
+          {
+            "tab": "Meet Izumi",
+            "groups": [
+              {
+                "group": "Start here",
+                "pages": [
+                  "en/overview/what-is-izumi",
+                  "en/overview/access",
+                  "en/overview/security",
+                  "en/overview/quickstart"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Using Izumi",
+            "groups": [
+              {
+                "group": "Everyday use",
+                "pages": [
+                  "en/using/search",
+                  "en/using/documents",
+                  "en/using/structure-and-health",
+                  "en/using/who-knows",
+                  "en/using/proposals",
+                  "en/using/web-clip",
+                  "en/using/tokens-and-log",
+                  "en/using/troubleshooting"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "AI tools (MCP)",
+            "groups": [
+              {
+                "group": "Connecting",
+                "pages": [
+                  "en/ai-tools/overview",
+                  "en/ai-tools/chatgpt",
+                  "en/ai-tools/claude",
+                  "en/ai-tools/slack",
+                  "en/ai-tools/claude-code",
+                  "en/ai-tools/other-clients",
+                  "en/ai-tools/tools"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Administration",
+            "groups": [
+              {
+                "group": "Managing",
+                "pages": [
+                  "en/admin/people",
+                  "en/admin/companies-domains-roles",
+                  "en/admin/sources-drive",
+                  "en/admin/sources-microsoft",
+                  "en/admin/sources-upload",
+                  "en/admin/push-api",
+                  "en/admin/review-queue",
+                  "en/admin/access-log",
+                  "en/admin/deletion"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Installation",
+            "groups": [
+              {
+                "group": "Setting up",
+                "pages": [
+                  "en/install/requirements",
+                  "en/install/install",
+                  "en/install/first-admin",
+                  "en/install/sign-in",
+                  "en/install/connectors",
+                  "en/install/oauth",
+                  "en/install/tls",
+                  "en/install/backup",
+                  "en/install/upgrade",
+                  "en/install/monitoring",
+                  "en/install/offline"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "primary": {
+      "type": "button",
+      "label": "Prijava / Sign in",
+      "href": "https://izumi.akiaconsulting.com"
+    }
+  },
+  "footer": {
+    "links": [
+      {
+        "header": "Izumi",
+        "items": [
+          {
+            "label": "izumi.akiaconsulting.com",
+            "href": "https://izumi.akiaconsulting.com"
+          },
+          {
+            "label": "Akia Consulting",
+            "href": "https://akiaconsulting.com"
+          }
+        ]
+      }
+    ]
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude"
+    ]
+  },
+  "search": {
+    "prompt": "Pretraga / Search..."
+  },
+  "seo": {
+    "metatags": {
+      "canonical": "https://docs.izumi.akiaconsulting.com"
+    }
+  }
+}

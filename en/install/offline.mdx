@@ -1,0 +1,76 @@
+---
+title: "Running offline"
+description: "Install in a network without internet access."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21 (from the code, nothing run).
+
+Izumi has no telemetry, no update check and no call to any Akia service. Documents, text chunks, vectors, access records, keys and backups stay on the server. This page lists the only outside calls and how to set a server up without internet.
+
+## What leaves the server
+
+Only this, and most rows only when you set them up:
+
+| Feature | Hosts |
+|---|---|
+| Google sign-in (`TB_OIDC_GOOGLE_CLIENT_ID`) | `accounts.google.com`, `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `www.googleapis.com` |
+| Microsoft (Entra) sign-in (`TB_OIDC_ENTRA_CLIENT_ID`) | `login.microsoftonline.com` |
+| Google Drive sources | `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com` |
+| SharePoint and OneDrive sources | `graph.microsoft.com`, `login.microsoftonline.com` |
+| OpenAI embedder (`TB_EMBED_PROVIDER` or `TB_EMBED_NEXT_PROVIDER` is `openai`) | `api.openai.com`. The text of documents and every search question are then sent to OpenAI. |
+| Embedder outside the compose project (`TB_EMBED_URL` or `TB_EMBED_NEXT_URL` with a host that is not a compose service) | that host |
+| First embedder start, or a start with an incomplete model volume | `huggingface.co` and its download hosts. When the whole model is in the volume, the embedder starts from the local snapshot and asks nobody. |
+| MCP clients through OAuth with CIMD (`TB_OAUTH=on` and `TB_OAUTH_CIMD` on) | `claude.ai`, `chatgpt.com`: the client document and the JWKS it names, only when a client whose `client_id` is an address on that host connects. Nothing with `TB_OAUTH_CIMD=off`. |
+| TLS with the `proxy` profile | the certificate authority (Let's Encrypt), to get and renew a certificate |
+| Optional reranker (profile `rerank`, turned on with `TB_RERANK_URL`) | `huggingface.co` at the first start (model), or the host in `TB_RERANK_URL`. |
+| Building the image | Docker image registries and the npm registry, only when building |
+
+## A server without internet
+
+Prepare the model and the images on a machine with internet and the same CPU architecture as the server (amd64 keeps the model as safetensors, arm64 as ONNX: a volume filled on the other architecture does not start).
+
+<Steps>
+  <Step title="On a machine with internet: build the image and fill the model">
+    Build the image and run the install once until `/readyz` is 200 (the embedder has then downloaded the model). Then export the images and the model volume:
+
+    ```
+    docker save team-brain:0.5.7 pgvector/pgvector:0.8.7-pg18-bookworm ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4 caddy:2.11.6 node:22.23.4-bookworm-slim | gzip > tb-images.tar.gz
+    docker run --rm -v team-brain_embed-models:/data:ro -v "$PWD:/out" pgvector/pgvector:0.8.7-pg18-bookworm tar czf /out/tb-models.tar.gz -C /data .
+    ```
+  </Step>
+  <Step title="Transfer the files">
+    Copy the install directory (without `.env` and `backups/`), `tb-images.tar.gz` and `tb-models.tar.gz` to the server.
+  </Step>
+  <Step title="On the server, before the first start">
+    ```
+    docker load -i tb-images.tar.gz
+    docker volume create team-brain_embed-models
+    docker run --rm -v team-brain_embed-models:/data -v "$PWD:/in:ro" pgvector/pgvector:0.8.7-pg18-bookworm tar xzf /in/tb-models.tar.gz -C /data
+    ```
+
+    On an arm64 machine `cpu-arm64-1.9.4` goes instead of `cpu-1.9.4`.
+
+    `docker compose` may warn that the volume was not created by Compose: it uses it anyway.
+  </Step>
+  <Step title="Continue with the install">
+    Go to [Install](/en/install/install) from the `.env` file. The embedder starts from the local snapshot. The first admin ([First sign-in and admin](/en/install/first-admin)) runs inside the image and needs no internet.
+  </Step>
+</Steps>
+
+- For the monthly restore check ([Backup and restore](/en/install/backup)) keep the `docker tag` line: the script then uses the loaded image of the release instead of building a new one, and the loaded Node image runs its helper containers.
+- Sign-in, connectors and TLS from a public certificate authority need their hosts from the table. Without them nobody can sign in to the web app (the page says sign-in is not set up): what remains are the operator commands, the upload and personal tokens (`./tb admin token create`) for MCP and the API, and TLS behind your own proxy with your own certificate.
+
+## Limits
+
+- Without the Google or Microsoft hosts there is no sign-in with those accounts and no connectors for Drive and SharePoint.
+- Without `claude.ai` and `chatgpt.com` CIMD does not work: turn on DCR or pre-register a client, see [OAuth](/en/install/oauth).
+- The embedder for a model change on such a server is filled the same way.
+
+## Troubleshooting
+
+| What you see | What to check |
+|---|---|
+| The embedder does not start after the model transfer | The volume was filled on another CPU architecture (amd64 and arm64 have different model formats). |
+| The embedder tries to reach `huggingface.co` | The model volume is incomplete: repeat the transfer of the whole volume. |
+| Building the image fails | The build needs internet. Build the image on a machine with internet and transfer it with `docker save`. |
+| A client connection fails with `invalid_client` | CIMD cannot reach `claude.ai` or `chatgpt.com`: see [OAuth](/en/install/oauth). |

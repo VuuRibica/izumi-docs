@@ -1,0 +1,88 @@
+---
+title: "Backup i restore"
+description: "Kako se pravi i vraća rezervna kopija."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21: `./tb backup`, mesečna provera vraćanja i `./tb restore` uživo na probnom steku (Docker Desktop, Mac, arm64), a noćni backup i vlasnik fajlova na produkciji čitanjem.
+
+Servis `backup` svake noći pravi šifrovanu kopiju cele baze. Ova stranica opisuje šta se čuva, kako da napravite kopiju odmah, kako da svakog meseca proverite da se kopija vraća i kako da vratite instalaciju.
+
+## Šta se pravi
+
+- Svake noći u `TB_BACKUP_HOUR:00` (vreme iz `TZ`, podrazumevano 2 sata po `Europe/Belgrade`) servis `backup` radi `pg_dump -Fc` kao superkorisnik, šifruje izlaz ključem `TB_BACKUP_KEY` (gpg, AES256) i piše `TB_BACKUP_DIR/daily/tb-<UTC vreme>-<verzija>.dump.gpg` uz `<fajl>.manifest.json` (broj redova po tabeli, bez podataka).
+- Prvi backup u mesecu se čuva i u `monthly/`. Ostaje 14 dnevnih i 6 mesečnih kopija.
+- Uz `TB_BACKUP_REMOTE` svaki fajl se kopira i tamo i rotira isto.
+- Neuspela noć ne ostavlja fajl: sledeća noć pokušava ponovo. Ako ne uspe samo kopiranje na `TB_BACKUP_REMOTE`, lokalni fajl ostaje.
+
+Na produkciji Izumija proveren je ovaj izgled (2026-11-21): u `daily/` stoje parovi `tb-20261121T010001Z-0.5.7.dump.gpg` i `.manifest.json` (14 kopija i 14 manifesta), `monthly/` postoji, a `TB_BACKUP_REMOTE` nije postavljen.
+
+## Kopija odmah i provera starosti
+
+```
+./tb backup     # jedna kopija sada; ispisuje fajl
+./tb status     # pokazuje starost poslednje kopije
+```
+
+- Fajlovi imaju vlasnika root i prava 0600, a folderi 0700. Za čitanje, listanje i kopiranje treba root ili `sudo`: `sudo ls -l backups/daily`.
+- Alarm podesite na kopiju stariju od jednog dana, vidi [Monitoring](/sr/instalacija/monitoring).
+
+## Ključevi
+
+- `TB_MASTER_KEY` nikad nije u backupu ni u servisu `backup`. Potpun oporavak traži oba ključa: `TB_BACKUP_KEY` (da se fajl dešifruje) i `TB_MASTER_KEY` (da se pročitaju ključevi firmi u njemu).
+- Čuvajte kopiju svakog ključa van servera, na dva različita mesta (na primer dva zapisa u menadžeru lozinki koja otvaraju različiti ljudi). Nikad pored backupa i nikad u `TB_BACKUP_REMOTE`. Gubitak bilo kojeg ključa gubi backupe.
+- Kopirajte backupe sa servera: montirajte udaljeni direktorijum i postavite `TB_BACKUP_REMOTE`, ili kopirajte `backups/` svojim alatom (kao root). Backup na istom disku ne preživljava gubitak servera.
+
+## Mesečna provera vraćanja
+
+Jednom mesečno vratite najnoviju kopiju u probni stek. Skript `scripts/ops/restore-test.sh --from <fajl>` pokreće privremeni projekat `tbp4-restore-b` (portovi 18082 i 18092, slika `team-brain:tbp4-restore`), vraća fajl ključevima iz env fajla instalacije, pokreće proveru posle vraćanja (brojevi redova prema manifestu, bezbednosni katalog, nijedan identitet ne vidi ništa) i uklanja probni stek. Instalacija se ne dira.
+
+```
+tag=$(sed -n 's/^TB_IMAGE_TAG=//p' .env | tail -n 1)    # izdanje koje instalacija pokreće
+docker tag "team-brain:$tag" team-brain:tbp4-restore
+mkdir -p ~/restore-test
+sudo cp backups/daily/tb-<vreme>-<verzija>.dump.gpg backups/daily/tb-<vreme>-<verzija>.dump.gpg.manifest.json ~/restore-test/
+sudo chown "$USER" ~/restore-test/*
+scripts/ops/restore-test.sh --from ~/restore-test/tb-<vreme>-<verzija>.dump.gpg --env .env --out ~/restore-test/result-$(date +%F).md
+rm ~/restore-test/*.dump.gpg
+```
+
+- Red sa `docker tag` pravi da probni stek koristi sliku izdanja koje instalacija pokreće, pa skript ništa ne gradi. Bez interneta je obavezan: pravljenje slike preuzima npm pakete i pada.
+- Izlaz 0 i fajl sa rezultatom znače da se kopija vraća.
+- Probni stek pokreće drugi embedder. Na serveru sa 8 GB pokrenite test u mirnom satu, ili na drugoj mašini sa kopijom backupa i oba ključa. Na probnom steku je embedder same instalacije bio zaustavljen tokom testa, jer dva embeddera ne staju u 8 GB.
+
+## Vraćanje (restore)
+
+`./tb restore <fajl>` vraća kopiju u prazan stek.
+
+- Odbija (izlaz 3, ništa se ne menja) kad `tb.company` ili `tb_audit.log` imaju redove.
+- Manifest mora stajati pored fajla.
+- Koraci se ispisuju, a greška imenuje korak: pokrene `db`, proveri da je stek prazan, zaustavi `app`, `worker` i `backup`, dešifruje i proveri fajl (pogrešan ključ ili oštećen fajl staju ovde), ponovo napravi bazu i uloge kao pri novoj instalaciji, pokrene `pg_restore`, pokrene `migrate`, podigne stek kao `docker compose up -d` (bez workera), sačeka `/healthz`, pokrene proveru posle vraćanja i tek tada pokrene `worker` i sačeka `/readyz`.
+- Worker ostaje isključen dok provera ne prođe: vraćena kopija drži živi Google refresh token i inače bi sinhronizovao pravi Drive i menjao brojeve koje provera poredi. Ako provera padne, worker ostaje zaustavljen.
+
+Vraćanje preko pokvarene instalacije:
+
+```
+docker compose down
+docker volume rm team-brain_db-data
+sudo ./tb restore backups/daily/tb-<vreme>-<verzija>.dump.gpg
+```
+
+- `sudo` je potreban jer folderi sa backupom pripadaju root-u. `sudo` odbacuje promenljive vaše ljuske: uz drugo ime direktorijuma pokrenite `sudo TB_COMPOSE_PROJECT=team-brain ./tb restore <fajl>`.
+- Na novom serveru prvo instalirajte kao u [Instalacija](/sr/instalacija/instalacija) sa starim `TB_MASTER_KEY` i `TB_BACKUP_KEY` u `.env` (nove lozinke uloga su u redu), kopirajte backup i manifest tamo, pa pokrenite `./tb restore <fajl>` dok je stek prazan.
+
+## Ograničenja
+
+- Vraćanje bez starog `TB_MASTER_KEY` vraća redove, ali ključevi firmi ne mogu da se otpakuju.
+- `./tb restore` radi samo na praznom steku.
+- Backup na istom disku ne štiti od gubitka servera: kopirajte ga van servera.
+- Backup raste sa brojem delova teksta (chunk). Pilot korpus od 43 dokumenta daje backup od 1,1 MB (iz vodiča, nije mereno u ovoj proveri).
+
+## Rešavanje problema
+
+| Šta vidite | Šta proveriti |
+|---|---|
+| `./tb backup` pada | `TB_BACKUP_KEY` nije u `.env`, ili `pg_dump` ili gpg nisu uspeli (pogledajte izlaz komande). Ručni backup ne traži da servis `backup` radi. |
+| Poslednja kopija je starija od dana | Pogledajte `docker compose logs backup`. Neuspela noć ne ostavlja fajl. |
+| `./tb restore` kaže da fajl ne postoji | Pokrenuli ste ga bez `sudo`: folderi pripadaju root-u. |
+| `./tb restore` izlaz 3 | Stek nije prazan. Uklonite volumen baze kao gore. |
+| Restore staje na dešifrovanju | Pogrešan `TB_BACKUP_KEY` ili oštećen fajl. |

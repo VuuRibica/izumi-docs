@@ -1,0 +1,60 @@
+---
+title: "Security and data"
+description: "Where your data lives and who can reach it."
+---
+
+Checked on Izumi 0.5.7, 2026-11-21.
+
+This page says where data lives, who can reach it, what is recorded and what is deleted. The pages that prove it are listed under Next. Items not seen live carry (from the code).
+
+## Where data lives
+
+- On the server where Izumi is installed. Documents, text passages, search vectors, the access log, keys and backups stay there (from the code). Izumi sends them nowhere. A copy of backups and keys off the server is made by the operator, as [Backup and restore](/en/install/backup) recommends.
+- Izumi has no telemetry, no update check and no call to any Akia service (checked with an egress test on release 0.5.7, 2026-11-21, see Limits).
+- By default, search runs on a model inside the same installation. When you connect an AI tool (ChatGPT, Claude, Slackbot), the passages it receives go to that tool, within your rights. If the operator sets up an external search model, document text also goes to that provider: with OpenAI, for example, document text and every search question are sent to OpenAI (from the code).
+
+## What leaves the server
+
+- Most outbound calls exist only when you configure them: sign-in with a Google or Microsoft account, Google Drive and SharePoint sources, a certificate authority for HTTPS, an external search model and, for connecting AI tools over OAuth, the addresses `claude.ai` and `chatgpt.com`. On first start the server downloads the search model from the internet once (from the code).
+- The exact list of hosts is on [Running offline](/en/install/offline).
+
+## Who can reach it
+
+- Access goes by company, domain and role, as on [How access works](/en/overview/access).
+- The rules are checked in the database itself (PostgreSQL row level security), not only in the application (from the code).
+- An AI tool has only your rights, and you revoke the connection on **My tokens and profile**.
+- The server operator, whoever runs the installation, runs commands on the server itself: creates companies and the first invitation, deletes people and companies, and sees records that belong to no company.
+
+## What is recorded
+
+- The **Access log** records who asked what, what was returned and what was refused.
+- The title and text of a document sent through the push API are not recorded (from the code).
+
+## Retention and deletion
+
+- A company keeps access records as long as it sets: 30 to 3650 days, 365 by default.
+- Deleting a source deletes every document it imported, with no way back. Files in Drive and SharePoint stay.
+- A single document is not deleted from the web app: it goes with its source, from the source or through the push API.
+- Izumi does not delete documents by age (from the code).
+- Deleting a person (for example on a GDPR request) and deleting a whole company is done by the server operator, not by the company admin (from the code). The account and access data are deleted. What entered the knowledge base stays with the company, the name becomes "Bivši član" (Serbian for "former member"), and access records stay until the retention period ends.
+
+## Protection
+
+- With the built-in proxy: HTTPS with a Let's Encrypt certificate, redirect from HTTP and HSTS. Production was checked as it stands, not issuing a certificate from scratch.
+- Connector credentials (Drive, SharePoint) are stored encrypted with that company's own key and are never shown again (from the code).
+- Every night an encrypted copy of the whole database is made. A full recovery needs two keys. The operator runs the monthly restore test, as described on Backup and restore.
+
+## Working offline
+
+- The server can run without internet, but without the Google and Microsoft addresses nobody can sign in to the web app and there are no Drive or SharePoint sources. Personal tokens for AI tools and operator commands remain (from the guide and the code).
+
+## Limits
+
+- Izumi sends results as data, not instructions, and marks web clips as untrusted. Whether an AI tool treats them that way depends on the tool.
+- This page repeats only what the AI tools, Administration and Installation pages say. It claims nothing beyond that.
+
+## Next
+
+- [Running offline](/en/install/offline), [TLS](/en/install/tls), [Backup and restore](/en/install/backup) and [Connectors](/en/install/connectors).
+- [Deletion and retention](/en/admin/deletion), [Access log](/en/admin/access-log) and [Companies, domains, roles](/en/admin/companies-domains-roles).
+- The [AI tools overview](/en/ai-tools/overview) says what an AI tool may see.

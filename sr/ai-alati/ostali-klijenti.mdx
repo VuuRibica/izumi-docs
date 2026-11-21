@@ -1,0 +1,45 @@
+---
+title: "Ostali klijenti"
+description: "Opšta podešavanja za bilo koji MCP klijent: adresa i zaglavlje sa tokenom."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-20 (opšta podešavanja po dokumentaciji servera, nijedan drugi klijent nije proban uživo).
+
+Svaki klijent koji govori MCP preko Streamable HTTP-a podešava se na isti način.
+
+## Šta vam treba
+
+- Adresa servera: adresa vašeg Izumija sa `/mcp` na kraju. Na demo instalaciji (samo uz poziv): `https://izumi.akiaconsulting.com/mcp`.
+- Lični token. Napravite ga u Izumi: **Moji tokeni i profil**, odeljak **Tokeni**, dugme **Novi token**. Postupak je opisan na stranici [Claude Code](/sr/ai-alati/claude-code), odeljak "Putanja 2: lični token".
+
+Token deluje kao vi. Nikad ne čita više nego što vi možete da pročitate, a sužen token čita manje.
+
+## Podešavanje
+
+U klijentu dodajte udaljeni MCP server sa ovim vrednostima:
+
+| Podešavanje | Vrednost |
+|---|---|
+| URL | `https://izumi.akiaconsulting.com/mcp` (vaša adresa sa `/mcp`) |
+| Transport | Streamable HTTP |
+| Zaglavlje | `Authorization: Bearer <token>` |
+
+- Svaki zahtev nosi zaglavlje `Authorization: Bearer <token>`.
+- Samo Streamable HTTP. Klijent koji podržava samo lokalne (stdio) servere ne radi. SSE se ne koristi.
+- Opciono: klijent može da šalje zaglavlja `X-TB-Client` (ime klijenta) i `X-TB-Agent` (ime agenta koji radi u njemu). Vide ih urednici koji pregledaju vaše predloge i vide se u vašem **Log pristupa**, pa urednik zna odakle predlog dolazi.
+
+## Provera
+
+Zamolite klijent da pozove `whoami`. Odgovor je vaše ime i firme i domeni koje token sme da čita. Ako dobijete grešku autentikacije, token je pogrešan, istekao ili opozvan: napravite novi.
+
+## Ograničenja
+
+- Token ističe po roku koji ste izabrali, najviše 90 dana.
+- Pozivi su ograničeni na 60 u minuti po tokenu. Alat tada vraća `rate_limited` sa vremenom čekanja.
+- Opoziv tokena u **Moji tokeni i profil** prekida rad klijenta odmah.
+
+## Rešavanje problema
+
+- Greška autentikacije: token je pogrešan, istekao ili opozvan. Napravite novi.
+- `forbidden_scope`: token nema pravo `propose`. Napravite novi token sa tim pravom.
+- `rate_limited`: sačekajte vreme koje alat navodi.

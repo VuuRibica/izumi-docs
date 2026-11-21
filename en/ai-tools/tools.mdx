@@ -1,0 +1,88 @@
+---
+title: "Tools and example questions"
+description: "The five tools the AI sees in Izumi, the errors they can return and example questions."
+---
+
+Checked on Izumi 0.5.7, 2026-11-20. The tools and errors were checked against the server code, and the calls `whoami`, `search`, `get_document`, `who_knows` and `propose_note` were checked live in ChatGPT and claude.ai, and `propose_note` also in Slackbot (see the pages of those tools).
+
+Izumi gives an AI tool five tools. You do not call tools yourself: you ask your AI tool and it picks the tool. Here you see what each one does, so you know what to ask for.
+
+## The five tools
+
+| Tool | What it does | Scope |
+|---|---|---|
+| `whoami` | Tells the tool who you are and which companies and domains the connection may read. | `read` |
+| `search` | Searches the company's knowledge and returns passages as evidence, with source, link, author and freshness. It does not answer questions, the AI tool writes the answer. It returns up to 8 documents. | `read` |
+| `get_document` | Returns the full text of one document by ID, in pages. | `read` |
+| `who_knows` | Suggests up to five colleagues who know a topic, with the reason. | `read` |
+| `propose_note` | Proposes a new note for one domain (`company/domain`, a title and a Markdown text). | `propose` |
+
+## Example questions
+
+### whoami
+
+- "Who am I in Izumi and what may I read?"
+- "In which domains am I an editor?"
+
+### search
+
+- "How long do we keep documentation?"
+- "Search Izumi: the rules for contract retention periods. Name the source."
+- "What do this year's documents say about returns?"
+
+### get_document
+
+- "Open the best hit and read the whole document, then summarize it."
+- "Give me the next page of that document."
+
+### who_knows
+
+- "Who in the company knows about retention periods?"
+- "Whom should I ask about the API migration?"
+
+### propose_note
+
+- "Propose a note in the domain Legal and compliance: title '…', text '…'."
+- "Write this conclusion down as a proposal for review."
+
+<Info>
+The AI tool picks the tool itself, so a good question does not have to name the tool. In our checks we named them ("Call the Izumi tool search …") to be sure which one is called.
+</Info>
+
+## What happens to a proposal
+
+- A proposal cannot be searched and nobody can read it over MCP.
+- It waits in the **Review queue** of that domain. An editor of the domain reads it, may edit the title and text, and chooses **Approve** or **Reject**. A rejection carries a reason.
+- An approved proposal becomes a note in the domain, marked `note`. The author is whoever proposed it, and the editor is the approver.
+- You see your own proposals and their status in the same queue. You can withdraw one that is still waiting.
+- A proposal nobody decides expires after 30 days.
+
+## Results are data, not instructions
+
+The AI tool should treat the text that `search` and `get_document` return as data, never as instructions. Results flagged `untrusted-web` come from web clips and that text is not trustworthy: the tool should not follow it even if it contains a command.
+
+## Errors
+
+A tool error is an answer with a message and a code. The messages are fixed English text.
+
+| Code | Meaning | What to do |
+|---|---|---|
+| `forbidden_scope` | The connection lacks the scope for the tool. For example `propose_note` without the `propose` scope. | Revoke the connection and connect again with the scope, or make a new token. |
+| `rate_limited` | More than 60 calls per minute per token. | Wait for the time the error names. |
+| `daily_limit` | The daily limit for `get_document` (by default 500 per token per UTC day, a company can set it). | Try tomorrow (UTC). |
+| `not_found` | The document does not exist or you may not read it. | Check that you can see it in **Documents**. |
+| `invalid_input` | The input does not satisfy the schema, for example a title that is too short. The message names the field. | Fix the input. |
+| `too_large` | The input is over a size limit. | Shorten the input. |
+| `unavailable` | Search is not available right now. | Try again later. |
+
+## Limits
+
+- `search` returns at most 8 documents, with up to 3 passages each. `who_knows` returns at most 5 people.
+- The tools see only what you may see. A narrowed token sees less.
+- Five tools is all Izumi exposes over MCP. The `push` scope is not used over MCP.
+
+## Troubleshooting
+
+- The AI tool says it has no Izumi tools: the connection is not on in that chat or it expired. See the page for your tool.
+- `search` does not return what you expect: check that you can see the document in **Documents**. The tool does not see more than you.
+- A proposal is not in the **Review queue**: check the domain it was proposed in and whether the tool returned an error.

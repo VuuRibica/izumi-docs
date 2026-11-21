@@ -1,0 +1,76 @@
+---
+title: "Rad bez interneta"
+description: "Instalacija u mreži bez pristupa internetu."
+---
+
+Provereno na Izumi 0.5.7, 2026-11-21 (iz koda, bez pokretanja).
+
+Izumi nema telemetriju, proveru ažuriranja ni poziv ka nekoj Akia usluzi. Dokumenti, delovi teksta, vektori, zapisi o pristupu, ključevi i backupi ostaju na serveru. Ova stranica navodi jedine spoljne pozive i kako se server postavlja bez interneta.
+
+## Šta izlazi sa servera
+
+Samo ovo, i većina redova samo kad to podesite:
+
+| Funkcija | Hostovi |
+|---|---|
+| Google prijava (`TB_OIDC_GOOGLE_CLIENT_ID`) | `accounts.google.com`, `oauth2.googleapis.com`, `openidconnect.googleapis.com`, `www.googleapis.com` |
+| Microsoft (Entra) prijava (`TB_OIDC_ENTRA_CLIENT_ID`) | `login.microsoftonline.com` |
+| Google Drive izvori | `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com` |
+| SharePoint i OneDrive izvori | `graph.microsoft.com`, `login.microsoftonline.com` |
+| OpenAI embedder (`TB_EMBED_PROVIDER` ili `TB_EMBED_NEXT_PROVIDER` je `openai`) | `api.openai.com`. Tekst dokumenata i svako pitanje za pretragu tada se šalju OpenAI-ju. |
+| Embedder van compose projekta (`TB_EMBED_URL` ili `TB_EMBED_NEXT_URL` sa hostom koji nije compose servis) | taj host |
+| Prvi start embeddera, ili start sa nepotpunim volumenom modela | `huggingface.co` i njegovi hostovi za preuzimanje. Kad je ceo model u volumenu, embedder startuje iz lokalnog snimka i ne pita nikoga. |
+| MCP klijenti preko OAuth-a sa CIMD (`TB_OAUTH=on` i `TB_OAUTH_CIMD` uključen) | `claude.ai`, `chatgpt.com`: dokument klijenta i JWKS koji navodi, samo kad se poveže klijent čiji je `client_id` adresa na tom hostu. Ništa uz `TB_OAUTH_CIMD=off`. |
+| TLS sa `proxy` profilom | sertifikaciono telo (Let's Encrypt), da dobije i obnovi sertifikat |
+| Opcioni reranker (profil `rerank`, uključen sa `TB_RERANK_URL`) | `huggingface.co` pri prvom startu (model), ili host iz `TB_RERANK_URL`. |
+| Pravljenje slike | registri Docker slika i npm registar, samo pri pravljenju |
+
+## Server bez interneta
+
+Model i slike pripremite na mašini sa internetom i istom CPU arhitekturom kao server (amd64 čuva model kao safetensors, arm64 kao ONNX: volumen napunjen na drugoj arhitekturi ne startuje).
+
+<Steps>
+  <Step title="Na mašini sa internetom: napravite sliku i napunite model">
+    Napravite sliku i pokrenite instalaciju jednom dok `/readyz` ne bude 200 (embedder je tada preuzeo model). Zatim izvezite slike i volumen modela:
+
+    ```
+    docker save team-brain:0.5.7 pgvector/pgvector:0.8.7-pg18-bookworm ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4 caddy:2.11.6 node:22.23.4-bookworm-slim | gzip > tb-images.tar.gz
+    docker run --rm -v team-brain_embed-models:/data:ro -v "$PWD:/out" pgvector/pgvector:0.8.7-pg18-bookworm tar czf /out/tb-models.tar.gz -C /data .
+    ```
+  </Step>
+  <Step title="Prenesite fajlove">
+    Kopirajte instalacioni direktorijum (bez `.env` i `backups/`), `tb-images.tar.gz` i `tb-models.tar.gz` na server.
+  </Step>
+  <Step title="Na serveru, pre prvog starta">
+    ```
+    docker load -i tb-images.tar.gz
+    docker volume create team-brain_embed-models
+    docker run --rm -v team-brain_embed-models:/data -v "$PWD:/in:ro" pgvector/pgvector:0.8.7-pg18-bookworm tar xzf /in/tb-models.tar.gz -C /data
+    ```
+
+    Na arm64 mašini umesto `cpu-1.9.4` ide `cpu-arm64-1.9.4`.
+
+    `docker compose` može da upozori da volumen nije napravljen preko Compose-a: koristi ga svejedno.
+  </Step>
+  <Step title="Nastavite sa instalacijom">
+    Idite na [Instalacija](/sr/instalacija/instalacija) od fajla `.env`. Embedder startuje iz lokalnog snimka. Prvi admin ([Prva prijava i admin](/sr/instalacija/prvi-admin)) radi u slici i ne traži internet.
+  </Step>
+</Steps>
+
+- Za mesečnu probu vraćanja ([Backup i restore](/sr/instalacija/backup)) zadržite red `docker tag`: skript tada koristi učitanu sliku izdanja umesto da gradi novu, a učitana Node slika pokreće njegove pomoćne kontejnere.
+- Prijava, konektori i TLS od javnog sertifikacionog tela traže svoje hostove iz tabele. Bez njih u web aplikaciju niko ne može da se prijavi (stranica kaže da prijava nije podešena): ostaju operatorske komande, upload i lični tokeni (`./tb admin token create`) za MCP i API, a TLS iza sopstvenog proksija sa sopstvenim sertifikatom.
+
+## Ograničenja
+
+- Bez Google ili Microsoft hostova nema prijave tim nalozima ni konektora za Drive i SharePoint.
+- Bez `claude.ai` i `chatgpt.com` CIMD ne radi: uključite DCR ili unapred registrujte klijenta, vidi [OAuth](/sr/instalacija/oauth).
+- Embedder za promenu modela na takvom serveru puni se na isti način.
+
+## Rešavanje problema
+
+| Šta vidite | Šta proveriti |
+|---|---|
+| Embedder ne startuje posle prenosa modela | Volumen je napunjen na drugoj CPU arhitekturi (amd64 i arm64 imaju različit format modela). |
+| Embedder pokušava da dođe do `huggingface.co` | Volumen modela je nepotpun: ponovite prenos celog volumena. |
+| Pravljenje slike pada | Build traži internet. Napravite sliku na mašini sa internetom i prenesite je sa `docker save`. |
+| Povezivanje klijenta pada sa `invalid_client` | CIMD ne može da dođe do `claude.ai` ili `chatgpt.com`: vidi [OAuth](/sr/instalacija/oauth). |
