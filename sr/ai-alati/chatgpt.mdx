@@ -73,18 +73,13 @@ ChatGPT često menja nazive menija. Na dan provere (2026-11-20) konektori se zov
       <img src="/images/sr/chatgpt/06-composer-menu.png" alt="ChatGPT, meni + u polju za poruku" />
     </Frame>
   </Step>
-  <Step title="Proverite vezu">
+  <Step title="Proverite vezu i pitajte nešto iz dokumenata">
     Pitajte: "Pozovi Izumi alat whoami i reci mi ko sam i šta smem." ChatGPT vraća vaše ime, ime veze (`ChatGPT`), prava (`read`, `propose`), rok (90 dana od odobravanja) i domene u kojima ste urednik.
 
-    <Frame>
-      <img src="/images/sr/chatgpt/07-answer-whoami.png" alt="ChatGPT, odgovor alata whoami" />
-    </Frame>
-  </Step>
-  <Step title="Pitajte nešto iz dokumenata">
-    Na primer: "Pozovi Izumi alat search: koliko dugo čuvamo dokumentaciju u Moravska Trgovina? Zatim pozovi get_document za najbolji pogodak i navedi izvor." ChatGPT zove `search`, pa `get_document`, odgovara i daje link na izvorni dokument na Google Drive-u.
+    Zatim pitajte nešto iz dokumenata, na primer: "Pozovi Izumi alat search: koliko dugo čuvamo dokumentaciju u Moravska Trgovina? Zatim pozovi get_document za najbolji pogodak i navedi izvor." ChatGPT zove `search`, pa `get_document`, odgovara i daje link na izvorni dokument na Google Drive-u.
 
     <Frame>
-      <img src="/images/sr/chatgpt/08-answer-search.png" alt="ChatGPT, odgovor sa izvorom iz Izumija" />
+      <img src="/images/sr/chatgpt/07-answer-whoami-search.png" alt="ChatGPT, odgovor alata whoami i search" />
     </Frame>
   </Step>
   <Step title="Predložite belešku (opciono)">
@@ -114,10 +109,6 @@ U Izumi otvorite **Moji tokeni i profil**. Veza je red sa oznakom **Povezana apl
 </Frame>
 
 Posle opoziva, pri sledećem pozivu ChatGPT piše "Reconnect Izumi: Your Izumi connection has expired. Reconnect it before ChatGPT can use it for this request." sa dugmadima **Not now** i **Reconnect**. **Reconnect** otvara isti prozor **Connect Izumi** i istu stranicu za odobravanje. Posle novog odobravanja `whoami` radi bez ikakvog drugog podešavanja.
-
-<Frame>
-  <img src="/images/sr/chatgpt/14-reconnect.png" alt="ChatGPT, poruka Reconnect Izumi" />
-</Frame>
 
 ## Uklanjanje konektora iz ChatGPT-a
 
