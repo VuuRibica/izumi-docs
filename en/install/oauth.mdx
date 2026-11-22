@@ -85,7 +85,7 @@ For a client that supports neither CIMD nor DCR, or when both are off, register 
 ## Limits
 
 - A shared key for the whole company is not supported: each person connects their own client and approves it with their own sign-in, and the connection reads only what that person reads.
-- (From the install guide, not checked live.) ChatGPT Free, Plus and Pro only read (`whoami`, `search`, `get_document`, `who_knows`). `propose_note` from ChatGPT needs a Business or Enterprise workspace.
+- ChatGPT can propose notes with `propose_note` on the Free plan too. A Business or Enterprise workspace is not required.
 - Approving clients for the whole company through the identity provider's administrator (Enterprise-Managed Authorization) comes later.
 - Entra sign-in itself was checked live on Izumi 0.5.8 (2026-11-21, see [Sign-in](/en/install/sign-in)). Connecting over OAuth as a person who signed in with Microsoft was checked live on Izumi 0.5.9 on 2026-11-21 with Claude Code: the consent page showed the signed-in person's name (a company admin who signed in with Microsoft), and after Approve the token appeared on My tokens and profile as a connected app with `read` and `propose`, and Revoke removed it. Not checked live: claude.ai and ChatGPT as a Microsoft-signed-in person. Try that once with your own app before OAuth is offered to a company with Microsoft 365.
 - A connection lasts 90 days from the last approval, then the client asks for a new connection. A client's refresh token is valid for 30 days: a client that is not used for 30 days has to reconnect earlier (from the code).
